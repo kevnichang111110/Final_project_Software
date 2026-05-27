@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "3e74f963-0943-4c56-86b4-678eabb2e4d4",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 220,
+  "height": 220,
+  "platformSettings": {},
+  "subMetas": {
+    "mana_potion_but_1": {
+      "ver": "1.0.6",
+      "uuid": "3209f971-64b5-4c8e-8567-c2d572190954",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "3e74f963-0943-4c56-86b4-678eabb2e4d4",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 220,
+      "height": 220,
+      "rawWidth": 220,
+      "rawHeight": 220,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

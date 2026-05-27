@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "6c0bf456-29cc-4622-bce6-c7e4de628ca8",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 55,
+  "height": 58,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_PictoIcon_Calendar": {
+      "ver": "1.0.6",
+      "uuid": "01954406-d4e3-4059-b9c8-7b3276537d38",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "6c0bf456-29cc-4622-bce6-c7e4de628ca8",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 55,
+      "height": 58,
+      "rawWidth": 55,
+      "rawHeight": 58,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "2ffbdd5d-0efe-4b99-a963-1d09d2f6c14b",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 357,
+  "height": 321,
+  "platformSettings": {},
+  "subMetas": {
+    "Chest_Luckybox_Platinum_Open": {
+      "ver": "1.0.6",
+      "uuid": "8320f373-dfa6-48dc-af17-33756b6922f6",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "2ffbdd5d-0efe-4b99-a963-1d09d2f6c14b",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 357,
+      "height": 321,
+      "rawWidth": 357,
+      "rawHeight": 321,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

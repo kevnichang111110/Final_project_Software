@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "490e958b-764e-4fcf-83d8-2f41fbe84a79",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 64,
+  "height": 64,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_PictoIcon_Mark_Question-2": {
+      "ver": "1.0.6",
+      "uuid": "1c269c58-eb22-414d-989e-1acd56f7e38d",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "490e958b-764e-4fcf-83d8-2f41fbe84a79",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 12,
+      "trimY": 12,
+      "width": 40,
+      "height": 40,
+      "rawWidth": 64,
+      "rawHeight": 64,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

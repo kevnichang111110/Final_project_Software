@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "5c5cd8ac-acc0-42e7-b284-ee7a7afa65c3",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 286,
+  "height": 276,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_ShopIcon_Soulgem_03": {
+      "ver": "1.0.6",
+      "uuid": "afc35dfe-8a77-46c5-b84c-7847937a8307",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "5c5cd8ac-acc0-42e7-b284-ee7a7afa65c3",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 286,
+      "height": 276,
+      "rawWidth": 286,
+      "rawHeight": 276,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

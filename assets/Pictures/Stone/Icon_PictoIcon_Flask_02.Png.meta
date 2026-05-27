@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "e3990142-f55d-4844-87df-ed759cde6288",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 32,
+  "height": 32,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_PictoIcon_Flask_02": {
+      "ver": "1.0.6",
+      "uuid": "a8170690-2ed6-4f45-ac9c-7e48eb9e9e9e",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "e3990142-f55d-4844-87df-ed759cde6288",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 6,
+      "trimY": 6,
+      "width": 20,
+      "height": 20,
+      "rawWidth": 32,
+      "rawHeight": 32,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

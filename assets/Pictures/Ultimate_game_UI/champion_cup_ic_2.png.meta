@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "fad3bdd1-93be-4f4d-8b76-f9ddf1247a66",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 141,
+  "height": 137,
+  "platformSettings": {},
+  "subMetas": {
+    "champion_cup_ic_2": {
+      "ver": "1.0.6",
+      "uuid": "de564493-ddaf-4ca5-952d-a55d8cc286a4",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "fad3bdd1-93be-4f4d-8b76-f9ddf1247a66",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 141,
+      "height": 137,
+      "rawWidth": 141,
+      "rawHeight": 137,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}
