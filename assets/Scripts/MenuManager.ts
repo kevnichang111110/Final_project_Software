@@ -13,11 +13,11 @@ export default class MenuManager extends cc.Component {
 
 
     onPlayButtonClick() {
-        cc.director.loadScene("SelectMode");
+        cc.director.loadScene("selectmode");
     }
 
     onLeaderboardButtonClick() {
-        cc.director.loadScene("Leaderboard");
+        cc.director.loadScene("leaderboard");
     }
 
     onSettingButtonClick() {
@@ -29,9 +29,9 @@ export default class MenuManager extends cc.Component {
         }
     }
     Singleplayer() {
-        cc.director.loadScene("Shop");
+        cc.director.loadScene("shop");
     }
     Multiplayer() {
-        cc.director.loadScene("Shop");
+        cc.director.loadScene("shop");
     }
 }
