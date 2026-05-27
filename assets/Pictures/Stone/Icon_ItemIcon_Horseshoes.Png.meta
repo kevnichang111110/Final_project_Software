@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "4d086880-fc8c-437f-ae84-ac7e44b4a742",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 128,
+  "height": 113,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_ItemIcon_Horseshoes": {
+      "ver": "1.0.6",
+      "uuid": "0e345725-5674-4995-8662-9dd77c114ad2",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "4d086880-fc8c-437f-ae84-ac7e44b4a742",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 128,
+      "height": 113,
+      "rawWidth": 128,
+      "rawHeight": 113,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

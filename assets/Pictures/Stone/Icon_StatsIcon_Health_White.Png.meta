@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "72f17b00-ed35-4668-a42e-19758585eccb",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 34,
+  "height": 33,
+  "platformSettings": {},
+  "subMetas": {
+    "Icon_StatsIcon_Health_White": {
+      "ver": "1.0.6",
+      "uuid": "48c070d7-3f9c-4b6d-9fb7-57ed599d9e3a",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "72f17b00-ed35-4668-a42e-19758585eccb",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0.5,
+      "offsetY": -0.5,
+      "trimX": 7,
+      "trimY": 1,
+      "width": 21,
+      "height": 32,
+      "rawWidth": 34,
+      "rawHeight": 33,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}

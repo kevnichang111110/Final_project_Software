@@ -1,0 +1,38 @@
+{
+  "ver": "2.3.7",
+  "uuid": "9c87e08c-2298-4b8c-a73d-cda082885d67",
+  "importer": "texture",
+  "type": "sprite",
+  "wrapMode": "clamp",
+  "filterMode": "bilinear",
+  "premultiplyAlpha": false,
+  "genMipmaps": false,
+  "packable": true,
+  "width": 207,
+  "height": 204,
+  "platformSettings": {},
+  "subMetas": {
+    "green_poison_potion_cone": {
+      "ver": "1.0.6",
+      "uuid": "041df63a-af8f-420c-9909-06f16cb99659",
+      "importer": "sprite-frame",
+      "rawTextureUuid": "9c87e08c-2298-4b8c-a73d-cda082885d67",
+      "trimType": "auto",
+      "trimThreshold": 1,
+      "rotated": false,
+      "offsetX": 0,
+      "offsetY": 0,
+      "trimX": 0,
+      "trimY": 0,
+      "width": 207,
+      "height": 204,
+      "rawWidth": 207,
+      "rawHeight": 204,
+      "borderTop": 0,
+      "borderBottom": 0,
+      "borderLeft": 0,
+      "borderRight": 0,
+      "subMetas": {}
+    }
+  }
+}
