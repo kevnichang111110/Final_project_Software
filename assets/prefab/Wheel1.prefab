@@ -147,7 +147,7 @@
       "__id__": 1
     },
     "_enabled": true,
-    "partType": 0,
+    "partType": 2,
     "_id": ""
   },
   {
@@ -159,7 +159,7 @@
     },
     "_enabled": true,
     "tag": 0,
-    "_density": 1,
+    "_density": 100,
     "_sensor": false,
     "_friction": 0.5,
     "_restitution": 0.1,

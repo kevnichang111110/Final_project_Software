@@ -9,11 +9,15 @@ export default class Draggable extends cc.Component {
 
     // 修正：Enum 的正確寫法
     @property({ type: cc.Enum(PartType) })
-    partType = PartType.Wheel; 
+    partType = PartType.LeftWheel; 
 
     onLoad() {
+        if (cc.director.getScene().name === "game") {
+            this.enabled = false; 
+            return;
+        }
+
         this.rb = this.getComponent(cc.RigidBody);
-        // 確保路徑與你的 Node Tree 一模一樣 (Assemblyarea 小寫 a)
         this.assemblyArea = cc.find("Canvas/Assemblyarea"); 
 
         this.node.on(cc.Node.EventType.TOUCH_START, this.onDragStart, this);
@@ -59,7 +63,10 @@ export default class Draggable extends cc.Component {
 
         if (!this.assemblyArea) {
             console.error("找不到 Assemblyarea");
-            if (this.rb) this.rb.type = cc.RigidBodyType.Dynamic;
+            if (this.rb) {
+                this.rb.type = cc.RigidBodyType.Dynamic;
+                this.rb.awake = true;
+            }
             return;
         }
 
@@ -82,13 +89,14 @@ export default class Draggable extends cc.Component {
     }
 
     handleBodyDrop() {
+        if (!this.assemblyArea) return;
         let areaRect = this.assemblyArea.getBoundingBoxToWorld();
         if (areaRect.intersects(this.node.getBoundingBoxToWorld())) {
             if (this.rb) {
                 this.rb.type = cc.RigidBodyType.Static;
                 this.rb.linearVelocity = cc.v2(0, 0);
             }
-            this.node.angle = 90; 
+            this.node.angle = 0; 
             
             // 讓 Body 自動置中於組裝區
             let worldPos = this.assemblyArea.convertToWorldSpaceAR(cc.v2(0,0));
@@ -100,20 +108,26 @@ export default class Draggable extends cc.Component {
     }
 
     trySnapToSlot() {
-        // 注意：這裡的搜尋字串要跟你插槽腳本的類別名一致
         let allSlots = cc.find("Canvas").getComponentsInChildren("Slotsetting");
         let minDistance = 120;
         let targetSlot: any = null;
-
         let myWorldPos = this.node.convertToWorldSpaceAR(cc.v2(0,0));
 
         for (let slot of allSlots) {
-            if (slot.slotType !== this.partType || slot.isOccupied) continue;
+            // --- 修正後的判斷邏輯 ---
+            let isWheelMatch = (this.partType === PartType.LeftWheel || this.partType === PartType.RightWheel) && 
+                               (slot.slotType === PartType.LeftWheel || slot.slotType === PartType.RightWheel);
+            let isExactMatch = slot.slotType === this.partType;
+
+            // 只要滿足「輪胎匹配」或「完全匹配」其中之一即可，且插槽必須未被佔用
+            if (!(isWheelMatch || isExactMatch) || slot.isOccupied) {
+                continue;
+            }
+            // --- 刪除原本下面那行 redundant 的 if ---
 
             let slotWorldPos = slot.node.convertToWorldSpaceAR(cc.v2(0,0));
             let dist = slotWorldPos.sub(myWorldPos).mag();
 
-            console.log(`插槽 ${slot.node.name} 距離: ${dist.toFixed(2)}`);
             if (dist < minDistance) {
                 minDistance = dist;
                 targetSlot = slot;
