@@ -8,6 +8,7 @@ class ItemData {
     @property(cc.String) name: string = "";
     @property(cc.Integer) price: number = 0;
     @property(cc.SpriteFrame) icon: cc.SpriteFrame = null;
+    @property(cc.Prefab) partPrefab: cc.Prefab = null; 
 }
 
 @ccclass
@@ -24,24 +25,19 @@ export default class ShopManager extends cc.Component {
     @property([cc.Label]) slotPriceLabels: cc.Label[] = []; // 三個按鈕下的價錢標籤
 
     private currentSlotPrices: number[] = [0, 0, 0]; // 記錄目前三個位置的價格
-
+    private currentItemPoolIndex: number[] = [0, 0, 0];
     onLoad() {
-        this.updateGoldDisplay();
-        //this.startIconRotation(); 
+        // 1. 在這裡開啟物理引擎
+        let physics = cc.director.getPhysicsManager();
+        physics.enabled = true;
+        physics.gravity = cc.v2(0, -960); // 設定重力
 
+        this.updateGoldDisplay();
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
         }
     }
 
-    // startIconRotation() {
-    //     this.goldIcon.stopAllActions(); 
-    //     cc.tween(this.goldIcon)
-    //         .to(0.75, { scaleX: -1 }, { easing: 'sineInOut' }) // 轉到背面
-    //         .to(0.75, { scaleX: 1 }, { easing: 'sineInOut' })  // 轉到正面
-    //         .repeatForever()
-    //         .start();
-    // }
     updateGoldDisplay() {
         this.goldLabel.string = GameManager.gold.toString();
     }
@@ -50,14 +46,13 @@ export default class ShopManager extends cc.Component {
     refreshSlot(index: number) {
         if (this.itemPool.length === 0) return;
 
-        // 隨機從池子挑一個
         let randomIndex = Math.floor(Math.random() * this.itemPool.length);
         let item = this.itemPool[randomIndex];
 
-        // 更新 UI
         this.slotIcons[index].spriteFrame = item.icon;
         this.slotPriceLabels[index].string = item.price.toString();
         this.currentSlotPrices[index] = item.price;
+        this.currentItemPoolIndex[index] = randomIndex;
     }
 
     // 按鈕點擊事件 (參數 index 代表是哪一個按鈕)
@@ -68,15 +63,38 @@ export default class ShopManager extends cc.Component {
         if (GameManager.gold >= price) {
             GameManager.gold -= price;
             this.updateGoldDisplay();
-            console.log("購買了第 " + (index + 1) + " 個商品");
-            
-            // 購買成功後，刷新該位置
+
+            // --- 執行生成實體 ---
+            let itemData = this.itemPool[this.currentItemPoolIndex[index]];
+            this.spawnPart(itemData.partPrefab, event.target);
+
             this.refreshSlot(index);
         } else {
             this.showLackGoldTip();
         }
     }
 
+    spawnPart(prefab: cc.Prefab, btnNode: cc.Node) {
+        if (!prefab) {
+            console.warn("該商品沒有設定 Prefab！");
+            return;
+        }
+        // 1. 產生實體
+        let part = cc.instantiate(prefab);
+        part.parent = this.node; // 掛在 Canvas 下
+
+        // 2. 座標轉換：讓它從按鈕位置噴出來
+        let worldPos = btnNode.convertToWorldSpaceAR(cc.v2(0, 0));
+        let localPos = this.node.convertToNodeSpaceAR(worldPos);
+        part.setPosition(localPos);
+
+        // 3. 給一個向上的推力，讓它有「跳出來」的感覺
+        let rb = part.getComponent(cc.RigidBody);
+        if (rb) {
+            rb.applyLinearImpulse(cc.v2(0, 500), rb.getWorldCenter(), true);
+        }
+    }
+    
     showLackGoldTip() {
         console.log("正在執行抖動，目標節點是：", this.goldIcon.name);
         this.tipLabel.stopAllActions();
