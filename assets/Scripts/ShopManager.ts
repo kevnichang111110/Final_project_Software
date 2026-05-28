@@ -167,4 +167,18 @@ export default class ShopManager extends cc.Component {
         // 執行跳轉
         cc.director.loadScene("game");
     }
+    @property(cc.Prefab)
+    settingsPrefab: cc.Prefab|null = null;
+
+    onOpenSettings() {
+        if (this.settingsPrefab) {
+            let settingsNode = cc.instantiate(this.settingsPrefab);
+            let canvas = cc.find("Canvas");
+            settingsNode.parent = canvas;
+            settingsNode.setSiblingIndex(canvas.childrenCount - 1);
+            settingsNode.setPosition(0, 0);
+        } else {
+            console.error("尚未在編輯器中關聯 Settings Prefab！");
+        }
+    }
 }

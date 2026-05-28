@@ -12,6 +12,8 @@ export default class BattleManager extends cc.Component {
     private wheelJoints: cc.WheelJoint[] = []; // 儲存所有的輪胎關節
     private moveDir: number = 0; // 0: 停止, 1: 右, -1: 左
     private maxSpeed: number = 1200; // 最大轉速
+    private weaponJoints: cc.RevoluteJoint[] = [];
+    private isAttacking: boolean = false;
 
     onLoad() {
         let physics = cc.director.getPhysicsManager();
@@ -42,6 +44,9 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.right:
                 this.moveDir = 1;
                 break;
+            case cc.macro.KEY.space:
+            this.isAttacking = true;
+            break;
         }
     }
 
@@ -53,19 +58,34 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.right:
                 this.moveDir = 0;
                 break;
+            case cc.macro.KEY.space:
+                this.isAttacking = false;
+                break;
         }
     }
 
     update(dt: number) {
-        // 每一幀根據鍵盤輸入更新輪胎轉速
+        // 1. 控制輪胎移動
         for (let joint of this.wheelJoints) {
-            if (this.moveDir !== 0) {
-                joint.motorSpeed = this.maxSpeed * this.moveDir;
-                joint.enableMotor = true;
+            joint.motorSpeed = this.moveDir !== 0 ? this.maxSpeed * this.moveDir : 0;
+        }
+
+        // 2. 控制武器手動揮動邏輯
+        for (let j of this.weaponJoints) {
+            if (this.isAttacking) {
+                // 如果按住空白鍵：快速揮出直到上限
+                if (j.getJointAngle() < j.upperAngle) {
+                    j.motorSpeed = 1200; // 揮擊速度，可調大
+                } else {
+                    j.motorSpeed = 0; // 到位後停止出力，減少反作用力
+                }
             } else {
-                // 停止時可以選擇關閉馬達或設速度為0
-                joint.motorSpeed = 0;
-                // joint.enableMotor = false; // 註解這行可以產生「煞車」效果
+                // 如果放開空白鍵：慢慢收回
+                if (j.getJointAngle() > j.lowerAngle) {
+                    j.motorSpeed = -400; // 收回速度
+                } else {
+                    j.motorSpeed = 0; // 回到初始位置後停止
+                }
             }
         }
     }
@@ -80,7 +100,7 @@ export default class BattleManager extends cc.Component {
         let bodyNode = cc.instantiate(bodyPrefab);
         bodyNode.parent = this.node;
         bodyNode.angle = 0; 
-        bodyNode.setPosition(0, 300); 
+        bodyNode.setPosition(300, 300); 
 
         // 確保 Body 組別正確 (為了避開碰撞)
         bodyNode.group = "BODY"; 
@@ -103,7 +123,6 @@ export default class BattleManager extends cc.Component {
 
                 let prb = partNode.getComponent(cc.RigidBody);
                 if (prb) {
-                    prb.enabled = true;
                     prb.type = cc.RigidBodyType.Dynamic;
                 }
 
@@ -144,6 +163,7 @@ export default class BattleManager extends cc.Component {
         if (slotComp.slotType === PartType.LeftWheel || slotComp.slotType === PartType.RightWheel) {
             let joint = body.addComponent(cc.WheelJoint);
             joint.connectedBody = partRb;
+            joint.collideConnected = false;
             joint.anchor = anchorInBody;
             joint.connectedAnchor = cc.v2(0, 0);
 
@@ -162,13 +182,22 @@ export default class BattleManager extends cc.Component {
             // if (slotComp.slotType === PartType.LeftWheel) { ... }
 
         } else {
-            // 武器或其它焊接零件
-            let joint = body.addComponent(cc.WeldJoint);
+            let joint = body.addComponent(cc.RevoluteJoint);
             joint.connectedBody = partRb;
+            joint.collideConnected = false;
             joint.anchor = anchorInBody;
             joint.connectedAnchor = cc.v2(0, 0);
-            joint.referenceAngle = 0;
-            joint.frequency = 0; 
+
+            joint.enableLimit = true;
+            joint.lowerAngle = -22.5;
+            joint.upperAngle = 337.5;
+
+            // 設定馬達
+            joint.enableMotor = true;
+            joint.maxMotorTorque = 1000;
+            joint.motorSpeed = 0;
+            
+            this.weaponJoints.push(joint);
         }
     }
 
@@ -178,5 +207,19 @@ export default class BattleManager extends cc.Component {
             if (!p) return false;
             return p.name.trim().toLowerCase() === cleanSearchName;
         });
+    }
+    @property(cc.Prefab)
+    settingsPrefab: cc.Prefab|null = null;
+
+    onOpenSettings() {
+        if (this.settingsPrefab) {
+            let settingsNode = cc.instantiate(this.settingsPrefab);
+            let canvas = cc.find("Canvas");
+            settingsNode.parent = canvas;
+            settingsNode.setSiblingIndex(canvas.childrenCount - 1);
+            settingsNode.setPosition(0, 0);
+        } else {
+            console.error("尚未在編輯器中關聯 Settings Prefab！");
+        }
     }
 }
