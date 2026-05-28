@@ -34,4 +34,5 @@ export default class MenuManager extends cc.Component {
     Multiplayer() {
         cc.director.loadScene("Shop");
     }
+
 }

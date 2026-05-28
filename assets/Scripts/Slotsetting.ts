@@ -1,15 +1,16 @@
 const {ccclass, property} = cc._decorator;
 
 export enum PartType {
-    Wheel = 0,
-    Body = 1,
-    Weapon = 2
+    Body=0,
+    Weapon=1,
+    LeftWheel=2,
+    RightWheel=3
 }
 
 @ccclass
 export default class PartSlot extends cc.Component {
     @property({ type: cc.Enum(PartType) }) 
-    slotType = PartType.Wheel; 
+    slotType = PartType.LeftWheel; 
 
     public isOccupied: boolean = false; 
 }

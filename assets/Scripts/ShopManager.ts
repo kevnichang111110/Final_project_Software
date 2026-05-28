@@ -1,5 +1,5 @@
 import GameManager from "./GameManager";
-
+import { PartType } from "./Slotsetting";
 // 定義一個簡單的商品類別，讓它能在編輯器裡設定
 const {ccclass, property} = cc._decorator;
 
@@ -118,5 +118,53 @@ export default class ShopManager extends cc.Component {
                 //this.startIconRotation();
             })
             .start();
+    }
+    Fight() {
+        console.log(">>> Fight 按鈕被按下了！");
+        
+        let bodyNode: cc.Node | null = null;
+        // 取得畫面上所有的 Draggable 物件
+        let allDraggables = cc.find("Canvas").getComponentsInChildren("Draggable");
+        
+        for (let d of allDraggables) {
+            // --- 核心修正：使用 Enum 名稱而不是數字 ---
+            if (d.partType === PartType.Body) { 
+                bodyNode = d.node;
+                break;
+            }
+        }
+
+        if (!bodyNode) {
+            console.error("❌ 存檔失敗：在畫面上找不到 PartType 為 Body 的零件！");
+            return;
+        }
+
+        // 紀錄車身資訊 (去掉名字裡的 (Clone) 或空格)
+        let rawBodyName = bodyNode.name.replace(/\([^)]*\)/g, "").trim();
+        GameManager.playerCarConfig.bodyPrefabName = rawBodyName;
+        GameManager.playerCarConfig.parts = [];
+
+        // 掃描該車身下所有的插槽 (Slotsetting)
+        let slots = bodyNode.getComponentsInChildren("Slotsetting");
+        console.log(`正在掃描車身 ${rawBodyName}，找到插槽數量: ${slots.length}`);
+
+        for (let slot of slots) {
+            // 只要插槽下面有子節點，就視為有裝裝備
+            if (slot.node.childrenCount > 0) {
+                let partNode = slot.node.children[0];
+                let partRawName = partNode.name.replace(/\([^)]*\)/g, "").trim();
+
+                GameManager.playerCarConfig.parts.push({
+                    slotName: slot.node.name,
+                    partName: partRawName
+                });
+                console.log(`已紀錄零件: ${partRawName} 裝在 ${slot.node.name}`);
+            }
+        }
+
+        console.log("✅ 成功保存配置:", JSON.stringify(GameManager.playerCarConfig));
+
+        // 執行跳轉
+        cc.director.loadScene("game");
     }
 }
