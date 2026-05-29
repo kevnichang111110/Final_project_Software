@@ -40,10 +40,13 @@
       },
       {
         "__id__": 14
+      },
+      {
+        "__id__": 15
       }
     ],
     "_prefab": {
-      "__id__": 15
+      "__id__": 16
     },
     "_opacity": 255,
     "_color": {
@@ -442,6 +445,23 @@
     },
     "_enabled": true,
     "partType": 0,
+    "_id": ""
+  },
+  {
+    "__type__": "33ce5GoCvJHBqbLT5BI5CpD",
+    "_name": "",
+    "_objFlags": 0,
+    "node": {
+      "__id__": 1
+    },
+    "_enabled": true,
+    "maxHP": 100,
+    "hitSound": {
+      "__uuid__": "cd9852f5-6759-4c63-9ed2-21db1a5445e0"
+    },
+    "dieSound": {
+      "__uuid__": "b8f117b5-e4b7-4d7d-8080-9b972ae4ed0b"
+    },
     "_id": ""
   },
   {

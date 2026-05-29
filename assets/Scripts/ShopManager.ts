@@ -28,14 +28,22 @@ export default class ShopManager extends cc.Component {
     @property([cc.Prefab]) allPrefabs: cc.Prefab[] = []; 
     private currentSlotPrices: number[] = [0, 0, 0];
     private currentItemPoolIndex: number[] = [0, 0, 0];
+
+    @property(cc.AudioClip)
+    bgmClip: cc.AudioClip |null= null;
+
+    private bgmAudioID: number = -1;
     onLoad() {
-        // 1. 在這裡開啟物理引擎
+        if (this.bgmClip) {
+            this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
+        }
+
         let physics = cc.director.getPhysicsManager();
         physics.enabled = true;
-        physics.gravity = cc.v2(0, -960); // 設定重力
-        this.updateScoreDisplay(); // 顯示比分
+        physics.gravity = cc.v2(0, -960);
+        this.updateGoldDisplay();
+        this.updateScoreDisplay();
 
-        // --- 核心邏輯：如果之前有存過車子配置，就把它變出來 ---
         if (GameManager.playerCarConfig.bodyPrefabName !== "") {
             this.reconstructCarForEditing();
         }

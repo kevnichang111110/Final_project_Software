@@ -1,15 +1,13 @@
-const {ccclass, property} = cc._decorator;
 
 export interface PartConfig {
     slotName: string;
     partName: string;
 }
 
-@ccclass
 export default class GameManager {
-    public static gold: number = 1000; // 初始金幣數
-
-    // --- 新增：勝場紀錄 ---
+    public static gold: number = 1000;
+    public static bgmVolume: number = 1.0;
+    public static sfxVolume: number = 1.0;
     public static playerWins: number = 0;
     public static botWins: number = 0;
 
@@ -29,11 +27,14 @@ export default class GameManager {
         }
     ];
 
-    // --- 新增：重置遊戲的方法 (當有人拿到四勝回到主選單時呼叫) ---
-    public static resetGame() {
+    public static resetAllData() {
+        this.gold = 1000;
         this.playerWins = 0;
         this.botWins = 0;
-        this.gold = 1000;
-        this.playerCarConfig = { bodyPrefabName: "", parts: [] };
+        this.playerCarConfig = {
+            bodyPrefabName: "",
+            parts: []
+        };
+        console.log("reset");
     }
 }

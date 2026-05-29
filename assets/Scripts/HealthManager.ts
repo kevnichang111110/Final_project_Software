@@ -7,7 +7,10 @@ export default class Health extends cc.Component {
 
     // 這裡用來回傳給 BattleManager 判定勝負
     public onDieCallback: Function |null= null;
-
+    @property(cc.AudioClip)
+    hitSound: cc.AudioClip|null = null; // 受傷音效
+    @property(cc.AudioClip)
+    dieSound: cc.AudioClip|null = null; // 爆炸/損壞音效
     onLoad() {
         this.currentHP = this.maxHP;
         // 必須開啟接觸監聽，否則 onBeginContact 不會觸發
@@ -32,6 +35,9 @@ export default class Health extends cc.Component {
         if (this.currentHP <= 0) return;
 
         this.currentHP -= dmg;
+        if (this.hitSound) {
+            cc.audioEngine.playEffect(this.hitSound, false);
+        }
         console.log(`${this.node.group} 剩下 HP: ${this.currentHP}`);
 
         if (this.currentHP <= 0) {
@@ -40,6 +46,9 @@ export default class Health extends cc.Component {
     }
 
     die() {
+        if (this.dieSound) {
+            cc.audioEngine.playEffect(this.dieSound, false);
+        }
         if (this.onDieCallback) {
             this.onDieCallback();
         }

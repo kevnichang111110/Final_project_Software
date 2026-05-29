@@ -1,3 +1,4 @@
+import GameManager from "./GameManager";
 const { ccclass, property } = cc._decorator;
 
 @ccclass
@@ -7,8 +8,14 @@ export default class MenuManager extends cc.Component {
     @property(cc.Prefab)
     settingsPrefab: cc.Prefab|null = null;
 
+    @property(cc.AudioClip)
+    bgmClip: cc.AudioClip |null= null;
+
+    private bgmAudioID: number = -1;
     onLoad() {
-        // 可以在這裡播放背景音樂
+        if (this.bgmClip) {
+            this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
+        }
     }
 
 
@@ -20,9 +27,11 @@ export default class MenuManager extends cc.Component {
         cc.director.loadScene("Leaderboard");
     }
     Singleplayer() {
+        GameManager.resetAllData();
         cc.director.loadScene("Shop");
     }
     Multiplayer() {
+        GameManager.resetAllData();
         cc.director.loadScene("Shop");
     }
     onOpenSettings() {
@@ -36,5 +45,6 @@ export default class MenuManager extends cc.Component {
             console.error("尚未在編輯器中關聯 Settings Prefab！");
         }
     }
+    
 
 }

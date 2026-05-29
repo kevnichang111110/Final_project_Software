@@ -16,14 +16,17 @@ export default class BattleManager extends cc.Component {
     @property(cc.Label)
     resultLabel: cc.Label |null= null;
 
-    // --- 玩家相關變數 ---
+    @property(cc.AudioClip)
+    bgmClip: cc.AudioClip |null= null;
+
+    private bgmAudioID: number = -1;
+
     private playerBody: cc.Node |null= null;
     private playerWheelJoints: cc.WheelJoint[] = [];
     private playerWeaponJoints: cc.RevoluteJoint[] = [];
     private moveDir: number = 0; 
     private isAttacking: boolean = false;
 
-    // --- Bot 相關變數 ---
     private botBody: cc.Node |null= null;
     private botWheelJoints: cc.WheelJoint[] = [];
     private botWeaponJoints: cc.RevoluteJoint[] = [];
@@ -42,6 +45,10 @@ export default class BattleManager extends cc.Component {
 
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
+    
+        if (this.bgmClip) {
+            this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
+        }
     }
 
     setupBattle() {
