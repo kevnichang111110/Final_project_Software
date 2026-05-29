@@ -1354,6 +1354,9 @@
     "settingsPrefab": {
       "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
     },
+    "bgmClip": {
+      "__uuid__": "04873773-cb80-4307-98fc-c63f8273ccea"
+    },
     "_id": "61xqVpcyFGMY6jpySs9UCm"
   }
 ]
