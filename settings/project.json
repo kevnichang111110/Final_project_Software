@@ -1,24 +1,46 @@
 {
   "group-list": [
     "default",
-    "BODY",
-    "PART"
+    "PLAYER_BODY",
+    "PLAYER_PART",
+    "BOT_BODY",
+    "BOT_PART"
   ],
   "collision-matrix": [
     [
       true,
       true,
-      true
-    ],
-    [
       true,
       true,
       true
     ],
     [
       true,
+      false,
+      false,
       true,
       true
+    ],
+    [
+      true,
+      false,
+      false,
+      true,
+      true
+    ],
+    [
+      true,
+      true,
+      true,
+      false,
+      false
+    ],
+    [
+      true,
+      true,
+      true,
+      false,
+      false
     ]
   ],
   "excluded-modules": [

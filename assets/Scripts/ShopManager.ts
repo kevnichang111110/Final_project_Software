@@ -19,27 +19,82 @@ export default class ShopManager extends cc.Component {
     @property(cc.Node) tipLabel: cc.Node = null;
 
     // --- 新增：商店配置 ---
-    @property([ItemData]) itemPool: ItemData[] = []; // 商品池（在編輯器裡填寫）
+    @property([ItemData]) itemPool: ItemData[] = [];
 
-    @property([cc.Sprite]) slotIcons: cc.Sprite[] = []; // 三個按鈕上的圖標組件
-    @property([cc.Label]) slotPriceLabels: cc.Label[] = []; // 三個按鈕下的價錢標籤
+    @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
+    @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
+    @property(cc.Label) scoreLabel: cc.Label = null; 
 
-    private currentSlotPrices: number[] = [0, 0, 0]; // 記錄目前三個位置的價格
+    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = []; 
+    private currentSlotPrices: number[] = [0, 0, 0];
     private currentItemPoolIndex: number[] = [0, 0, 0];
     onLoad() {
         // 1. 在這裡開啟物理引擎
         let physics = cc.director.getPhysicsManager();
         physics.enabled = true;
         physics.gravity = cc.v2(0, -960); // 設定重力
+        this.updateScoreDisplay(); // 顯示比分
+
+        // --- 核心邏輯：如果之前有存過車子配置，就把它變出來 ---
+        if (GameManager.playerCarConfig.bodyPrefabName !== "") {
+            this.reconstructCarForEditing();
+        }
 
         this.updateGoldDisplay();
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
         }
     }
+    reconstructCarForEditing() {
+        let config = GameManager.playerCarConfig;
+        let bodyPrefab = this.getPrefabByName(config.bodyPrefabName);
+        if (!bodyPrefab) return;
 
+        // 1. 生成車身
+        let bodyNode = cc.instantiate(bodyPrefab);
+        bodyNode.parent = this.node; // 掛在 Canvas
+        
+        // 2. 移動到組裝區中心
+        let area = cc.find("Canvas/Assemblyarea");
+        if (area) {
+            let worldCenter = area.convertToWorldSpaceAR(cc.v2(0,0));
+            bodyNode.setPosition(this.node.convertToNodeSpaceAR(worldCenter));
+        }
+        
+        // 3. 商店內車身必須是 Static
+        let rb = bodyNode.getComponent(cc.RigidBody);
+        if (rb) rb.type = cc.RigidBodyType.Static;
+
+        // 4. 重裝零件
+        for (let partInfo of config.parts) {
+            let slotNode = this.findNodeRecursive(bodyNode, partInfo.slotName);
+            let partPrefab = this.getPrefabByName(partInfo.partName);
+
+            if (slotNode && partPrefab) {
+                let partNode = cc.instantiate(partPrefab);
+                partNode.parent = slotNode; // 商店內是子節點關係
+                partNode.setPosition(0, 0);
+                partNode.angle = 0;
+
+                // 標記插槽佔用，避免再吸一個上去
+                let slotComp = slotNode.getComponent("Slotsetting");
+                if (slotComp) slotComp.isOccupied = true;
+
+                // 關閉物理，確保商店內不會亂噴
+                let prb = partNode.getComponent(cc.RigidBody);
+                if (prb) prb.type = cc.RigidBodyType.Static;
+                let pcol = partNode.getComponent(cc.PhysicsCollider);
+                if (pcol) pcol.enabled = false;
+            }
+        }
+    }
     updateGoldDisplay() {
         this.goldLabel.string = GameManager.gold.toString();
+    }
+    updateScoreDisplay() {
+        if(this.scoreLabel) {
+            this.scoreLabel.string = `PLAYER-${GameManager.playerWins}v.s.${GameManager.botWins}-BOT`;
+        }
     }
 
     // 刷新特定位置的商品
@@ -180,5 +235,18 @@ export default class ShopManager extends cc.Component {
         } else {
             console.error("尚未在編輯器中關聯 Settings Prefab！");
         }
+    }
+    getPrefabByName(name: string): cc.Prefab | undefined {
+        let cleanName = name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
+        return this.allPrefabs.find(p => p && p.name.trim().toLowerCase() === cleanName);
+    }
+
+    findNodeRecursive(root: cc.Node, name: string): cc.Node | null {
+        if (root.name === name) return root;
+        for (let child of root.children) {
+            let res = this.findNodeRecursive(child, name);
+            if (res) return res;
+        }
+        return null;
     }
 }
