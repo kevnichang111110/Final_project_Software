@@ -1,4 +1,4 @@
-import Slotsetting, { PartType } from "./Slotsetting";
+import { PartType } from "./Slotsetting";
 
 const {ccclass, property} = cc._decorator;
 
@@ -6,19 +6,22 @@ const {ccclass, property} = cc._decorator;
 export default class Draggable extends cc.Component {
     private rb: cc.RigidBody = null;
     private assemblyArea: cc.Node = null;
+    private partsLayer: cc.Node = null;
 
-    // 修正：Enum 的正確寫法
     @property({ type: cc.Enum(PartType) })
     partType = PartType.LeftWheel; 
 
     onLoad() {
+        // 戰鬥場景不啟用拖拽
         if (cc.director.getScene().name === "game") {
             this.enabled = false; 
             return;
         }
 
         this.rb = this.getComponent(cc.RigidBody);
+        
         this.assemblyArea = cc.find("Canvas/Assemblyarea"); 
+        this.partsLayer = cc.find("Canvas/Assemblyarea/PartLayer");
 
         this.node.on(cc.Node.EventType.TOUCH_START, this.onDragStart, this);
         this.node.on(cc.Node.EventType.TOUCH_MOVE, this.onDragMove, this);
@@ -27,18 +30,11 @@ export default class Draggable extends cc.Component {
     }
 
     onDragStart() {
-        // --- 修正：拆卸邏輯 ---
-        // 注意：這裡的字串要跟你 Slotsetting.ts 裡的類別名稱一致
-        let currentSlot = this.node.parent.getComponent("Slotsetting");
-        if (currentSlot) {
-            currentSlot.isOccupied = false; 
-            
+        // 抓起時，如果原本在網格內，先回到 Canvas 層級
+        if (this.node.parent !== cc.find("Canvas")) {
             let worldPos = this.node.convertToWorldSpaceAR(cc.v2(0,0));
             this.node.parent = cc.find("Canvas");
-            
-            // 修正：解決 Vec2 / Vec3 錯誤，使用 setPosition
-            let localPos = this.node.parent.convertToNodeSpaceAR(worldPos);
-            this.node.setPosition(localPos.x, localPos.y);
+            this.node.setPosition(this.node.parent.convertToNodeSpaceAR(worldPos));
         }
 
         if (this.rb) {
@@ -46,6 +42,8 @@ export default class Draggable extends cc.Component {
             let collider = this.getComponent(cc.PhysicsCollider);
             if (collider) collider.enabled = true; 
         }
+        
+        // 置頂顯示
         this.node.setSiblingIndex(this.node.parent.childrenCount - 1);
     }
 
@@ -56,94 +54,62 @@ export default class Draggable extends cc.Component {
     }
 
     onDragEnd() {
-        if (this.partType === PartType.Body) { 
-            this.handleBodyDrop();
+        if (!this.assemblyArea || !this.partsLayer) {
+            console.error("找不到組裝區或零件層，請檢查節點名稱！");
+            this.resetPhysics();
             return;
         }
 
-        if (!this.assemblyArea) {
-            console.error("找不到 Assemblyarea");
-            if (this.rb) {
-                this.rb.type = cc.RigidBodyType.Dynamic;
-                this.rb.awake = true;
-            }
-            return;
-        }
+        // 1. 取得在組裝區本地座標系下的位置
+        let worldPos = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
+        let localPos = this.assemblyArea.convertToNodeSpaceAR(worldPos);
 
-        let areaRect = this.assemblyArea.getBoundingBoxToWorld();
-        let myBounds = this.node.getBoundingBoxToWorld();
-
-        if (areaRect.intersects(myBounds)) {
-            if (this.rb) {
-                this.rb.type = cc.RigidBodyType.Static;
-                this.rb.linearVelocity = cc.v2(0, 0);
-            }
-            this.node.angle = 0;
-            this.trySnapToSlot();
-        } else {
-            if (this.rb) {
-                this.rb.type = cc.RigidBodyType.Dynamic;
-                this.rb.awake = true; // 強制喚醒剛體
-            }
-        }
-    }
-
-    handleBodyDrop() {
-        if (!this.assemblyArea) return;
-        let areaRect = this.assemblyArea.getBoundingBoxToWorld();
-        if (areaRect.intersects(this.node.getBoundingBoxToWorld())) {
-            if (this.rb) {
-                this.rb.type = cc.RigidBodyType.Static;
-                this.rb.linearVelocity = cc.v2(0, 0);
-            }
-            this.node.angle = 0; 
+        // 2. 檢查是否在 5x5 網格範圍內 (200x200)
+        // 假設你的 AssemblyArea Anchor 是 (0,0)
+        if (localPos.x >= 0 && localPos.x <= 200 && localPos.y >= 0 && localPos.y <= 200) {
             
-            // 讓 Body 自動置中於組裝區
-            let worldPos = this.assemblyArea.convertToWorldSpaceAR(cc.v2(0,0));
-            let localPos = this.node.parent.convertToNodeSpaceAR(worldPos);
-            this.node.setPosition(localPos.x, localPos.y);
+            // 計算網格索引
+            let gridX = Math.floor(localPos.x / 40);
+            let gridY = Math.floor(localPos.y / 40);
+
+            // 檢查該格子是否已有東西 (預防重疊)
+            if (this.isGridOccupied(gridX, gridY)) {
+                this.resetPhysics(); // 有東西了，不吸附，直接掉落
+                return;
+            }
+
+            // 3. 執行吸附
+            let snappedX = gridX * 40 + 20;
+            let snappedY = gridY * 40 + 20;
+
+            this.node.parent = this.partsLayer; 
+            this.node.setPosition(snappedX, snappedY);
+            this.node.angle = 0;
+            
+            if (this.rb) this.rb.type = cc.RigidBodyType.Static;
+            console.log(`吸附成功: (${gridX}, ${gridY})`);
         } else {
-            if (this.rb) this.rb.type = cc.RigidBodyType.Dynamic;
+            // 在區外，恢復物理
+            this.resetPhysics();
         }
     }
 
-    trySnapToSlot() {
-        let allSlots = cc.find("Canvas").getComponentsInChildren("Slotsetting");
-        let minDistance = 120;
-        let targetSlot: any = null;
-        let myWorldPos = this.node.convertToWorldSpaceAR(cc.v2(0,0));
-
-        for (let slot of allSlots) {
-            // --- 修正後的判斷邏輯 ---
-            let isWheelMatch = (this.partType === PartType.LeftWheel || this.partType === PartType.RightWheel) && 
-                               (slot.slotType === PartType.LeftWheel || slot.slotType === PartType.RightWheel);
-            let isExactMatch = slot.slotType === this.partType;
-
-            // 只要滿足「輪胎匹配」或「完全匹配」其中之一即可，且插槽必須未被佔用
-            if (!(isWheelMatch || isExactMatch) || slot.isOccupied) {
-                continue;
-            }
-            // --- 刪除原本下面那行 redundant 的 if ---
-
-            let slotWorldPos = slot.node.convertToWorldSpaceAR(cc.v2(0,0));
-            let dist = slotWorldPos.sub(myWorldPos).mag();
-
-            if (dist < minDistance) {
-                minDistance = dist;
-                targetSlot = slot;
-            }
+    // 輔助：恢復物理狀態
+    resetPhysics() {
+        if (this.rb) {
+            this.rb.type = cc.RigidBodyType.Dynamic;
+            this.rb.awake = true;
         }
+    }
 
-        if (targetSlot) {
-            this.node.parent = targetSlot.node; 
-            this.node.setPosition(0, 0);   
-            this.node.angle = 0; 
-            targetSlot.isOccupied = true;
-            if (this.rb) {
-                this.rb.type = cc.RigidBodyType.Static;
-                let collider = this.getComponent(cc.PhysicsCollider);
-                if (collider) collider.enabled = false; 
-            }   
+    // 輔助：檢查網格是否被佔用
+    isGridOccupied(gx: number, gy: number): boolean {
+        for (let p of this.partsLayer.children) {
+            if (p === this.node) continue;
+            let pgx = Math.floor(p.x / 40);
+            let pgy = Math.floor(p.y / 40);
+            if (pgx === gx && pgy === gy) return true;
         }
+        return false;
     }
 }

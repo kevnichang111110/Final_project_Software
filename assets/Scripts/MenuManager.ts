@@ -13,6 +13,9 @@ export default class MenuManager extends cc.Component {
 
     private bgmAudioID: number = -1;
     onLoad() {
+        
+        cc.audioEngine.setMusicVolume(GameManager.bgmVolume);
+        cc.audioEngine.setEffectsVolume(GameManager.sfxVolume);
         if (this.bgmClip) {
             this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
         }

@@ -27,6 +27,7 @@ export default class SettingsManager extends cc.Component {
         let vol = this.bgmSlider.progress;
         cc.audioEngine.setMusicVolume(vol);
         GameManager.bgmVolume = vol;
+        cc.sys.localStorage.setItem("bgm_vol", vol.toString());
     }
 
     // 當 SFX Slider 滑動時
@@ -34,7 +35,9 @@ export default class SettingsManager extends cc.Component {
         let vol = this.sfxSlider.progress;
         cc.audioEngine.setEffectsVolume(vol);
         GameManager.sfxVolume = vol;
+        cc.sys.localStorage.setItem("sfx_vol", vol.toString());
     }
+    
 
     onResume() {
         cc.director.getPhysicsManager().enabled = true;
