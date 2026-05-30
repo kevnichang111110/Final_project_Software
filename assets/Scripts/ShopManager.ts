@@ -1,6 +1,6 @@
-import GameManager from "./GameManager";
+import GameManager, { GridPart } from "./GameManager";
 import { PartType } from "./Slotsetting";
-// 定義一個簡單的商品類別，讓它能在編輯器裡設定
+
 const {ccclass, property} = cc._decorator;
 
 @ccclass("ItemData")
@@ -17,22 +17,20 @@ export default class ShopManager extends cc.Component {
     @property(cc.Label) goldLabel: cc.Label = null;
     @property(cc.Node) goldIcon: cc.Node = null;
     @property(cc.Node) tipLabel: cc.Node = null;
-
-    // --- 新增：商店配置 ---
-    @property([ItemData]) itemPool: ItemData[] = [];
-
-    @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
-    @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
     @property(cc.Label) scoreLabel: cc.Label = null; 
 
+    @property([ItemData]) itemPool: ItemData[] = [];
+    @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
+    @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
     @property([cc.Prefab]) allPrefabs: cc.Prefab[] = []; 
+    @property(cc.Prefab) settingsPrefab: cc.Prefab | null = null;
+
     private currentSlotPrices: number[] = [0, 0, 0];
     private currentItemPoolIndex: number[] = [0, 0, 0];
 
-    @property(cc.AudioClip)
-    bgmClip: cc.AudioClip |null= null;
-
+    @property(cc.AudioClip) bgmClip: cc.AudioClip | null = null;
     private bgmAudioID: number = -1;
+
     onLoad() {
         if (this.bgmClip) {
             this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
@@ -41,84 +39,111 @@ export default class ShopManager extends cc.Component {
         let physics = cc.director.getPhysicsManager();
         physics.enabled = true;
         physics.gravity = cc.v2(0, -960);
+
         this.updateGoldDisplay();
         this.updateScoreDisplay();
 
-        if (GameManager.playerCarConfig.bodyPrefabName !== "") {
+        // --- 核心改動：重組網格化車輛 ---
+        if (GameManager.playerCarGrid.length > 0) {
             this.reconstructCarForEditing();
         }
 
-        this.updateGoldDisplay();
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
         }
     }
+
+    /**
+     * 從戰鬥場景回來時，在商店中還原玩家拼好的零件
+     */
     reconstructCarForEditing() {
-        let config = GameManager.playerCarConfig;
-        let bodyPrefab = this.getPrefabByName(config.bodyPrefabName);
-        if (!bodyPrefab) return;
-
-        // 1. 生成車身
-        let bodyNode = cc.instantiate(bodyPrefab);
-        bodyNode.parent = this.node; // 掛在 Canvas
-        
-        // 2. 移動到組裝區中心
-        let area = cc.find("Canvas/Assemblyarea");
-        if (area) {
-            let worldCenter = area.convertToWorldSpaceAR(cc.v2(0,0));
-            bodyNode.setPosition(this.node.convertToNodeSpaceAR(worldCenter));
+        // 找到存放零件的層級 (建議在 Assemblyarea 下建一個名為 PartsLayer 的空節點)
+        let partsLayer = cc.find("Canvas/Assemblyarea/PartsLayer");
+        if (!partsLayer) {
+            console.error("找不到 PartsLayer，請在 Assemblyarea 下建立它");
+            return;
         }
-        
-        // 3. 商店內車身必須是 Static
-        let rb = bodyNode.getComponent(cc.RigidBody);
-        if (rb) rb.type = cc.RigidBodyType.Static;
 
-        // 4. 重裝零件
-        for (let partInfo of config.parts) {
-            let slotNode = this.findNodeRecursive(bodyNode, partInfo.slotName);
-            let partPrefab = this.getPrefabByName(partInfo.partName);
+        // 清空目前的顯示 (預防萬一)
+        partsLayer.removeAllChildren();
 
-            if (slotNode && partPrefab) {
-                let partNode = cc.instantiate(partPrefab);
-                partNode.parent = slotNode; // 商店內是子節點關係
-                partNode.setPosition(0, 0);
+        for (let data of GameManager.playerCarGrid) {
+            let prefab = this.getPrefabByName(data.partName);
+            if (prefab) {
+                let partNode = cc.instantiate(prefab);
+                partNode.parent = partsLayer;
+                
+                // 根據網格座標還原位置 (40像素一格，+20 移到中心)
+                let px = data.gridX * 40 + 20;
+                let py = data.gridY * 40 + 20;
+                partNode.setPosition(px, py);
                 partNode.angle = 0;
 
-                // 標記插槽佔用，避免再吸一個上去
-                let slotComp = slotNode.getComponent("Slotsetting");
-                if (slotComp) slotComp.isOccupied = true;
-
-                // 關閉物理，確保商店內不會亂噴
-                let prb = partNode.getComponent(cc.RigidBody);
-                if (prb) prb.type = cc.RigidBodyType.Static;
-                let pcol = partNode.getComponent(cc.PhysicsCollider);
-                if (pcol) pcol.enabled = false;
+                // 商店內關閉物理
+                let rb = partNode.getComponent(cc.RigidBody);
+                if (rb) rb.type = cc.RigidBodyType.Static;
+                let col = partNode.getComponent(cc.PhysicsCollider);
+                if (col) col.enabled = false;
             }
         }
     }
-    updateGoldDisplay() {
-        this.goldLabel.string = GameManager.gold.toString();
+
+    /**
+     * 按下 Fight 按鈕時，掃描組裝區，紀錄所有零件的網格座標
+     */
+    Fight() {
+        console.log(">>> 網格化掃描開始...");
+        let partsLayer = cc.find("Canvas/Assemblyarea/PartLayer");
+        if (!partsLayer || partsLayer.childrenCount === 0) {
+            console.error("❌ 存檔失敗：組裝區內沒有零件！");
+            return;
+        }
+
+        // 清空舊的網格數據
+        GameManager.playerCarGrid = [];
+
+        for (let p of partsLayer.children) {
+            // 透過本地座標反推它是第幾格 (gx, gy)
+            let gx = Math.floor(p.x / 40);
+            let gy = Math.floor(p.y / 40);
+            
+            // 去掉名字裡的 (Clone)
+            let rawName = p.name.replace(/\([^)]*\)/g, "").trim();
+
+            GameManager.playerCarGrid.push({
+                partName: rawName,
+                gridX: gx,
+                gridY: gy
+            });
+            console.log(`已紀錄零件: ${rawName} 座標: (${gx}, ${gy})`);
+        }
+
+        console.log("✅ 成功保存網格配置:", JSON.stringify(GameManager.playerCarGrid));
+
+        // 執行跳轉
+        cc.director.loadScene("game");
     }
+
+    updateGoldDisplay() {
+        if (this.goldLabel) this.goldLabel.string = GameManager.gold.toString();
+    }
+
     updateScoreDisplay() {
-        if(this.scoreLabel) {
-            this.scoreLabel.string = `PLAYER-${GameManager.playerWins}v.s.${GameManager.botWins}-BOT`;
+        if (this.scoreLabel) {
+            this.scoreLabel.string = `PLAYER-${GameManager.playerWins} v.s. ${GameManager.botWins}-BOT`;
         }
     }
 
-    // 刷新特定位置的商品
     refreshSlot(index: number) {
         if (this.itemPool.length === 0) return;
-
         let randomIndex = Math.floor(Math.random() * this.itemPool.length);
         let item = this.itemPool[randomIndex];
-
         this.slotIcons[index].spriteFrame = item.icon;
         this.slotPriceLabels[index].string = item.price.toString();
         this.currentSlotPrices[index] = item.price;
         this.currentItemPoolIndex[index] = randomIndex;
     }
 
-    // 按鈕點擊事件 (參數 index 代表是哪一個按鈕)
     onBuyButtonClick(event, customEventData: string) {
         let index = parseInt(customEventData);
         let price = this.currentSlotPrices[index];
@@ -126,11 +151,8 @@ export default class ShopManager extends cc.Component {
         if (GameManager.gold >= price) {
             GameManager.gold -= price;
             this.updateGoldDisplay();
-
-            // --- 執行生成實體 ---
             let itemData = this.itemPool[this.currentItemPoolIndex[index]];
             this.spawnPart(itemData.partPrefab, event.target);
-
             this.refreshSlot(index);
         } else {
             this.showLackGoldTip();
@@ -138,20 +160,13 @@ export default class ShopManager extends cc.Component {
     }
 
     spawnPart(prefab: cc.Prefab, btnNode: cc.Node) {
-        if (!prefab) {
-            console.warn("該商品沒有設定 Prefab！");
-            return;
-        }
-        // 1. 產生實體
+        if (!prefab) return;
         let part = cc.instantiate(prefab);
-        part.parent = this.node; // 掛在 Canvas 下
-
-        // 2. 座標轉換：讓它從按鈕位置噴出來
+        part.parent = this.node; // 先掛在 Canvas 下方便掉落
         let worldPos = btnNode.convertToWorldSpaceAR(cc.v2(0, 0));
         let localPos = this.node.convertToNodeSpaceAR(worldPos);
         part.setPosition(localPos);
 
-        // 3. 給一個向上的推力，讓它有「跳出來」的感覺
         let rb = part.getComponent(cc.RigidBody);
         if (rb) {
             rb.applyLinearImpulse(cc.v2(0, 500), rb.getWorldCenter(), true);
@@ -159,91 +174,32 @@ export default class ShopManager extends cc.Component {
     }
     
     showLackGoldTip() {
-        console.log("正在執行抖動，目標節點是：", this.goldIcon.name);
         this.tipLabel.stopAllActions();
         this.tipLabel.opacity = 255;
         cc.tween(this.tipLabel).delay(1.0).to(0.5, { opacity: 0 }).start();   
-        this.goldLabel.node.stopAllActions(); 
-        this.goldLabel.node.color = cc.Color.WHITE;  
-        cc.tween(this.goldLabel.node).to(0.1, { color: cc.Color.RED })
-        .to(0.1, { color: cc.Color.WHITE })
-        .union().repeat(5).start();
         this.goldIcon.stopAllActions();
-        this.goldIcon.scaleX = 1;
-        this.goldIcon.scaleY = 1;
-        this.goldIcon.angle = 0;
-        cc.tween(this.goldIcon)
-            .to(0.05, { scaleX: 1.3, scaleY: 1.3, angle: 15 })
-            .to(0.05, { scaleX: 1.0, scaleY: 1.0, angle: -15 })
-            .to(0.05, { scaleX: 1.1, scaleY: 1.1, angle: 10 })
-            .to(0.05, { scaleX: 1.0, scaleY: 1.0, angle: 0 })
-            .call(() => {
-                //this.startIconRotation();
-            })
-            .start();
+        cc.tween(this.goldIcon).to(0.05, { scale: 1.3 }).to(0.05, { scale: 1.0 }).start();
     }
-    Fight() {
-        console.log(">>> Fight 按鈕被按下了！");
-        
-        let bodyNode: cc.Node | null = null;
-        // 取得畫面上所有的 Draggable 物件
-        let allDraggables = cc.find("Canvas").getComponentsInChildren("Draggable");
-        
-        for (let d of allDraggables) {
-            // --- 核心修正：使用 Enum 名稱而不是數字 ---
-            if (d.partType === PartType.Body) { 
-                bodyNode = d.node;
-                break;
-            }
-        }
-
-        if (!bodyNode) {
-            console.error("❌ 存檔失敗：在畫面上找不到 PartType 為 Body 的零件！");
-            return;
-        }
-
-        // 紀錄車身資訊 (去掉名字裡的 (Clone) 或空格)
-        let rawBodyName = bodyNode.name.replace(/\([^)]*\)/g, "").trim();
-        GameManager.playerCarConfig.bodyPrefabName = rawBodyName;
-        GameManager.playerCarConfig.parts = [];
-
-        // 掃描該車身下所有的插槽 (Slotsetting)
-        let slots = bodyNode.getComponentsInChildren("Slotsetting");
-        console.log(`正在掃描車身 ${rawBodyName}，找到插槽數量: ${slots.length}`);
-
-        for (let slot of slots) {
-            // 只要插槽下面有子節點，就視為有裝裝備
-            if (slot.node.childrenCount > 0) {
-                let partNode = slot.node.children[0];
-                let partRawName = partNode.name.replace(/\([^)]*\)/g, "").trim();
-
-                GameManager.playerCarConfig.parts.push({
-                    slotName: slot.node.name,
-                    partName: partRawName
-                });
-                console.log(`已紀錄零件: ${partRawName} 裝在 ${slot.node.name}`);
-            }
-        }
-
-        console.log("✅ 成功保存配置:", JSON.stringify(GameManager.playerCarConfig));
-
-        // 執行跳轉
-        cc.director.loadScene("game");
-    }
-    @property(cc.Prefab)
-    settingsPrefab: cc.Prefab|null = null;
 
     onOpenSettings() {
         if (this.settingsPrefab) {
-            let settingsNode = cc.instantiate(this.settingsPrefab);
+            let node = cc.instantiate(this.settingsPrefab);
             let canvas = cc.find("Canvas");
-            settingsNode.parent = canvas;
-            settingsNode.setSiblingIndex(canvas.childrenCount - 1);
-            settingsNode.setPosition(0, 0);
-        } else {
-            console.error("尚未在編輯器中關聯 Settings Prefab！");
+            node.parent = canvas;
+            
+            // --- 核心修正：強制歸零座標並置頂 ---
+            node.setPosition(0, 0); 
+            node.setSiblingIndex(canvas.childrenCount - 1);
+            
+            // 如果 Prefab 裡有 Widget，強制刷新一次對齊
+            let widget = node.getComponent(cc.Widget);
+            if (widget) {
+                widget.updateAlignment();
+            }
         }
     }
+
+    // --- 輔助函數 ---
     getPrefabByName(name: string): cc.Prefab | undefined {
         let cleanName = name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
         return this.allPrefabs.find(p => p && p.name.trim().toLowerCase() === cleanName);
