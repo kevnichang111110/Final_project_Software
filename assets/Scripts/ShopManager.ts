@@ -22,7 +22,15 @@ export default class ShopManager extends cc.Component {
     @property([ItemData]) itemPool: ItemData[] = [];
     @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
     @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
-    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = []; 
+    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
+
+    // 可直接把 Core prefab 拖到這裡；如果沒拖，會從 allPrefabs 裡找名字叫 Core 的 prefab。
+    @property(cc.Prefab) corePrefab: cc.Prefab | null = null;
+
+    // Core 固定在 5x5 組裝區中心格，玩家不能拿出來。
+    @property(cc.Integer) coreGridX: number = 2;
+    @property(cc.Integer) coreGridY: number = 2;
+
     @property(cc.Prefab) settingsPrefab: cc.Prefab | null = null;
 
     private currentSlotPrices: number[] = [0, 0, 0];
@@ -43,9 +51,11 @@ export default class ShopManager extends cc.Component {
         this.updateGoldDisplay();
         this.updateScoreDisplay();
 
-        // --- 核心改動：重組網格化車輛 ---
+        // 無論是不是第一輪，商店都必須保證 Assemblyarea 裡有 Core。
         if (GameManager.playerCarGrid.length > 0) {
             this.reconstructCarForEditing();
+        } else {
+            this.ensureCoreInAssembly();
         }
 
         for (let i = 0; i < 3; i++) {
@@ -53,56 +63,55 @@ export default class ShopManager extends cc.Component {
         }
     }
 
-    /**
-     * 從戰鬥場景回來時，在商店中還原玩家拼好的零件
-     */
     reconstructCarForEditing() {
-        // 找到存放零件的層級 (建議在 Assemblyarea 下建一個名為 PartsLayer 的空節點)
-        let partsLayer = cc.find("Canvas/Assemblyarea/PartsLayer");
-        if (!partsLayer) {
-            console.error("找不到 PartsLayer，請在 Assemblyarea 下建立它");
-            return;
-        }
-
-        // 清空目前的顯示 (預防萬一)
-        partsLayer.removeAllChildren();
+        let partLayer = this.getPartLayer();
+        if (!partLayer) return;
+        partLayer.removeAllChildren();
 
         for (let data of GameManager.playerCarGrid) {
             let prefab = this.getPrefabByName(data.partName);
             if (prefab) {
                 let partNode = cc.instantiate(prefab);
-                partNode.parent = partsLayer;
-                
-                // 根據網格座標還原位置 (40像素一格，+20 移到中心)
-                let px = data.gridX * 40 + 20;
-                let py = data.gridY * 40 + 20;
+                partNode.parent = partLayer;
+
+                // --- 修改處：核心不再強制使用 coreGridX，而是使用存檔座標 ---
+                const gx = data.gridX;
+                const gy = data.gridY;
+
+                let px = gx * 40 + 20;
+                let py = gy * 40 + 20;
                 partNode.setPosition(px, py);
                 partNode.angle = 0;
 
-                // 商店內關閉物理
-                let rb = partNode.getComponent(cc.RigidBody);
-                if (rb) rb.type = cc.RigidBodyType.Static;
-                let col = partNode.getComponent(cc.PhysicsCollider);
-                if (col) col.enabled = false;
+                this.prepareShopPartNode(partNode);
             }
         }
+        this.ensureCoreInAssembly();
     }
 
     /**
-     * 按下 Fight 按鈕時，掃描組裝區，紀錄所有零件的網格座標
+     * 按下 Fight 按鈕時，掃描組裝區，紀錄所有零件的網格座標。
+     * 沒有 Core 不能開始戰鬥。
      */
     Fight() {
         console.log(">>> 網格化掃描開始...");
-        let partsLayer = cc.find("Canvas/Assemblyarea/PartLayer");
-        if (!partsLayer || partsLayer.childrenCount === 0) {
+        let partLayer = this.getPartLayer();
+        if (!partLayer || partLayer.childrenCount === 0) {
             console.error("❌ 存檔失敗：組裝區內沒有零件！");
+            return;
+        }
+
+        this.ensureCoreInAssembly();
+
+        if (!this.hasCoreNode(partLayer)) {
+            console.error("❌ 不能開始戰鬥：組裝區內沒有核心 Core！");
             return;
         }
 
         // 清空舊的網格數據
         GameManager.playerCarGrid = [];
 
-        for (let p of partsLayer.children) {
+        for (let p of partLayer.children) {
             // 透過本地座標反推它是第幾格 (gx, gy)
             let gx = Math.floor(p.x / 40);
             let gy = Math.floor(p.y / 40);
@@ -122,6 +131,75 @@ export default class ShopManager extends cc.Component {
 
         // 執行跳轉
         cc.director.loadScene("game");
+    }
+
+    private getPartLayer(): cc.Node | null {
+        let partLayer = cc.find("Canvas/Assemblyarea/PartLayer");
+        if (!partLayer) {
+            console.error("找不到 PartLayer，請在 Assemblyarea 下建立它");
+            return null;
+        }
+        return partLayer;
+    }
+
+    private getCorePrefab(): cc.Prefab | null {
+        if (this.corePrefab) return this.corePrefab;
+        const prefab = this.getPrefabByName("Core");
+        return prefab || null;
+    }
+
+    private cleanName(name: string): string {
+        return name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
+    }
+
+    private isCoreNode(node: cc.Node): boolean {
+        const draggable = node.getComponent("Draggable") as any;
+        return (draggable && draggable.partType === PartType.Core) || this.cleanName(node.name) === "core";
+    }
+
+    private hasCoreNode(partLayer: cc.Node): boolean {
+        return partLayer.children.some(p => this.isCoreNode(p));
+    }
+
+    private prepareShopPartNode(partNode: cc.Node) {
+        const isCore = this.isCoreNode(partNode);
+
+        let rb = partNode.getComponent(cc.RigidBody);
+        if (rb) rb.type = cc.RigidBodyType.Static;
+
+        let col = partNode.getComponent(cc.PhysicsCollider);
+        if (col) col.enabled = false;
+
+        const drag = partNode.getComponent("Draggable") as any;
+        if (drag) {
+            // --- 修改處：核心現在可以被拖動 ---
+            drag.enabled = true; 
+            if (isCore) {
+                drag.partType = PartType.Core;
+                // 你可以在這裡給核心加上特殊標記，讓 Draggable 知道「不能刪除它」
+            }
+        }
+    }
+
+     private ensureCoreInAssembly() {
+        let partLayer = this.getPartLayer();
+        if (!partLayer) return;
+
+        // 如果場上已經有核心了，就什麼都不做（讓它待在玩家放的地方）
+        if (this.hasCoreNode(partLayer)) return;
+
+        // 只有在完全沒核心時，才在預設中心點生成一個
+        const coreX = this.coreGridX * 40 + 20;
+        const coreY = this.coreGridY * 40 + 20;
+
+        const prefab = this.getCorePrefab();
+        if (!prefab) return;
+
+        let coreNode = cc.instantiate(prefab);
+        coreNode.parent = partLayer;
+        coreNode.name = "Core";
+        coreNode.setPosition(coreX, coreY);
+        this.prepareShopPartNode(coreNode);
     }
 
     updateGoldDisplay() {

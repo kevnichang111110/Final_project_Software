@@ -5608,8 +5608,16 @@
       },
       {
         "__uuid__": "663464c7-5c23-4251-9d48-1bd82391fea0"
+      },
+      {
+        "__uuid__": "03439411-8cef-4a3c-8702-257dae47b5c2"
       }
     ],
+    "corePrefab": {
+      "__uuid__": "03439411-8cef-4a3c-8702-257dae47b5c2"
+    },
+    "coreGridX": 2,
+    "coreGridY": 2,
     "settingsPrefab": {
       "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
     },

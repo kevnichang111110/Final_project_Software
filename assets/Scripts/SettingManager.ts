@@ -11,6 +11,7 @@ export default class SettingsManager extends cc.Component {
     sfxSlider: cc.Slider = null;
 
     onLoad() {
+        GameManager.isPaused = true;
         this.bgmSlider.progress = GameManager.bgmVolume;
         this.sfxSlider.progress = GameManager.sfxVolume;
 
@@ -40,11 +41,13 @@ export default class SettingsManager extends cc.Component {
     
 
     onResume() {
+        GameManager.isPaused = false; // 恢復遊戲
         cc.director.getPhysicsManager().enabled = true;
         this.node.destroy();
     }
 
     onQuit() {
+        GameManager.isPaused = false; // 切換場景前也重置
         cc.director.getPhysicsManager().enabled = true;
         cc.director.loadScene("Menu");
     }

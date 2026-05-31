@@ -4,7 +4,8 @@ export enum PartType {
     Body=0,
     Weapon=1,
     LeftWheel=2,
-    RightWheel=3
+    RightWheel=3,
+    Core = 4
 }
 
 @ccclass
