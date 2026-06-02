@@ -13,40 +13,34 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Body_bot1",
+    "_name": "Gun1",
     "_objFlags": 0,
     "_parent": null,
     "_children": [
       {
         "__id__": 2
-      },
-      {
-        "__id__": 5
-      },
-      {
-        "__id__": 8
       }
     ],
     "_active": true,
     "_components": [
       {
-        "__id__": 11
+        "__id__": 4
       },
       {
-        "__id__": 12
+        "__id__": 5
       },
       {
-        "__id__": 13
+        "__id__": 6
       },
       {
-        "__id__": 14
+        "__id__": 7
       },
       {
-        "__id__": 15
+        "__id__": 8
       }
     ],
     "_prefab": {
-      "__id__": 16
+      "__id__": 9
     },
     "_opacity": 255,
     "_color": {
@@ -58,8 +52,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 100,
-      "height": 50
+      "width": 40,
+      "height": 40
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -70,7 +64,7 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        487.352,
+        487.0352,
         200.556,
         0,
         0,
@@ -91,26 +85,22 @@
     "_skewX": 0,
     "_skewY": 0,
     "_is3DNode": false,
-    "_groupIndex": 3,
-    "groupIndex": 3,
+    "_groupIndex": 2,
+    "groupIndex": 2,
     "_id": ""
   },
   {
     "__type__": "cc.Node",
-    "_name": "slot_wheel1",
+    "_name": "firepoint",
     "_objFlags": 0,
     "_parent": {
       "__id__": 1
     },
     "_children": [],
     "_active": true,
-    "_components": [
-      {
-        "__id__": 3
-      }
-    ],
+    "_components": [],
     "_prefab": {
-      "__id__": 4
+      "__id__": 3
     },
     "_opacity": 255,
     "_color": {
@@ -122,8 +112,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 30,
-      "height": 30
+      "width": 0,
+      "height": 0
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -134,179 +124,7 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        30,
-        -30,
-        0,
-        0,
-        0,
-        0,
-        1,
-        1,
-        1,
-        1
-      ]
-    },
-    "_eulerAngles": {
-      "__type__": "cc.Vec3",
-      "x": 0,
-      "y": 0,
-      "z": 0
-    },
-    "_skewX": 0,
-    "_skewY": 0,
-    "_is3DNode": false,
-    "_groupIndex": 4,
-    "groupIndex": 4,
-    "_id": ""
-  },
-  {
-    "__type__": "e5be0bci/RGj7e0raiKDU9L",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 2
-    },
-    "_enabled": true,
-    "slotType": 3,
-    "_id": ""
-  },
-  {
-    "__type__": "cc.PrefabInfo",
-    "root": {
-      "__id__": 1
-    },
-    "asset": {
-      "__id__": 0
-    },
-    "fileId": "f7d/8ZF5BOUbFKNW3a86lN",
-    "sync": false
-  },
-  {
-    "__type__": "cc.Node",
-    "_name": "slot_wheel2",
-    "_objFlags": 0,
-    "_parent": {
-      "__id__": 1
-    },
-    "_children": [],
-    "_active": true,
-    "_components": [
-      {
-        "__id__": 6
-      }
-    ],
-    "_prefab": {
-      "__id__": 7
-    },
-    "_opacity": 255,
-    "_color": {
-      "__type__": "cc.Color",
-      "r": 255,
-      "g": 255,
-      "b": 255,
-      "a": 255
-    },
-    "_contentSize": {
-      "__type__": "cc.Size",
-      "width": 30,
-      "height": 30
-    },
-    "_anchorPoint": {
-      "__type__": "cc.Vec2",
-      "x": 0.5,
-      "y": 0.5
-    },
-    "_trs": {
-      "__type__": "TypedArray",
-      "ctor": "Float64Array",
-      "array": [
-        -30,
-        -30,
-        0,
-        0,
-        0,
-        0,
-        1,
-        1,
-        1,
-        1
-      ]
-    },
-    "_eulerAngles": {
-      "__type__": "cc.Vec3",
-      "x": 0,
-      "y": 0,
-      "z": 0
-    },
-    "_skewX": 0,
-    "_skewY": 0,
-    "_is3DNode": false,
-    "_groupIndex": 4,
-    "groupIndex": 4,
-    "_id": ""
-  },
-  {
-    "__type__": "e5be0bci/RGj7e0raiKDU9L",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 5
-    },
-    "_enabled": true,
-    "slotType": 2,
-    "_id": ""
-  },
-  {
-    "__type__": "cc.PrefabInfo",
-    "root": {
-      "__id__": 1
-    },
-    "asset": {
-      "__id__": 0
-    },
-    "fileId": "13D9utgsRJc4bmH2qAvf4o",
-    "sync": false
-  },
-  {
-    "__type__": "cc.Node",
-    "_name": "slot_weapon",
-    "_objFlags": 0,
-    "_parent": {
-      "__id__": 1
-    },
-    "_children": [],
-    "_active": true,
-    "_components": [
-      {
-        "__id__": 9
-      }
-    ],
-    "_prefab": {
-      "__id__": 10
-    },
-    "_opacity": 255,
-    "_color": {
-      "__type__": "cc.Color",
-      "r": 255,
-      "g": 255,
-      "b": 255,
-      "a": 255
-    },
-    "_contentSize": {
-      "__type__": "cc.Size",
-      "width": 50,
-      "height": 50
-    },
-    "_anchorPoint": {
-      "__type__": "cc.Vec2",
-      "x": 0.5,
-      "y": 0.5
-    },
-    "_trs": {
-      "__type__": "TypedArray",
-      "ctor": "Float64Array",
-      "array": [
-        75,
+        -20,
         0,
         0,
         0,
@@ -327,19 +145,8 @@
     "_skewX": 0,
     "_skewY": 0,
     "_is3DNode": false,
-    "_groupIndex": 4,
-    "groupIndex": 4,
-    "_id": ""
-  },
-  {
-    "__type__": "e5be0bci/RGj7e0raiKDU9L",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 8
-    },
-    "_enabled": true,
-    "slotType": 1,
+    "_groupIndex": 0,
+    "groupIndex": 0,
     "_id": ""
   },
   {
@@ -350,7 +157,7 @@
     "asset": {
       "__id__": 0
     },
-    "fileId": "5aWS0+9J9LeI9PdGCUXZNb",
+    "fileId": "348oeeWoBFk7eWMZ6XK1sP",
     "sync": false
   },
   {
@@ -369,7 +176,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "d4d84602-1c5a-479f-b8ad-7be4b398c57b"
+      "__uuid__": "f2dea020-a021-4ed8-b0b5-253d89cf25a8"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -431,8 +238,8 @@
     },
     "_size": {
       "__type__": "cc.Size",
-      "width": 100,
-      "height": 50
+      "width": 40,
+      "height": 40
     },
     "_id": ""
   },
@@ -444,7 +251,9 @@
       "__id__": 1
     },
     "_enabled": true,
-    "partType": 0,
+    "partType": 1,
+    "wheelMotorMultiplier": 1,
+    "weaponMode": 1,
     "_id": ""
   },
   {
@@ -456,12 +265,12 @@
     },
     "_enabled": true,
     "maxHP": 100,
-    "hitSound": {
-      "__uuid__": "cd9852f5-6759-4c63-9ed2-21db1a5445e0"
-    },
-    "dieSound": {
-      "__uuid__": "b8f117b5-e4b7-4d7d-8080-9b972ae4ed0b"
-    },
+    "hitSound": null,
+    "dieSound": null,
+    "showDebugHPBar": true,
+    "debugBarWidth": 34,
+    "debugBarHeight": 5,
+    "debugBarOffsetY": 0,
     "_id": ""
   },
   {

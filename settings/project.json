@@ -4,7 +4,9 @@
     "PLAYER_BODY",
     "PLAYER_PART",
     "BOT_BODY",
-    "BOT_PART"
+    "BOT_PART",
+    "BOT_BULLET",
+    "PLAYER_BULLET"
   ],
   "collision-matrix": [
     [
@@ -12,11 +14,6 @@
       true,
       true,
       true,
-      true
-    ],
-    [
-      true,
-      true,
       true,
       true,
       true
@@ -26,6 +23,26 @@
       true,
       true,
       true,
+      true,
+      true,
+      true
+    ],
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ],
+    [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
       true
     ],
     [
@@ -33,10 +50,23 @@
       true,
       true,
       true,
+      true,
+      false,
       true
     ],
     [
       true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true
+    ],
+    [
+      true,
+      true,
+      false,
       true,
       true,
       true,

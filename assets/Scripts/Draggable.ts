@@ -2,6 +2,11 @@ import { PartType } from "./Slotsetting";
 
 const {ccclass, property} = cc._decorator;
 
+export enum WeaponMode {
+    Melee = 0,
+    Gun = 1
+}
+cc.Enum(WeaponMode); 
 @ccclass
 export default class Draggable extends cc.Component {
     private rb: cc.RigidBody | null = null;
@@ -10,7 +15,12 @@ export default class Draggable extends cc.Component {
     private lastValidPos: cc.Vec2 = cc.v2(0, 0);
 
     @property({ type: cc.Enum(PartType) })
-    partType = PartType.LeftWheel; 
+    partType = PartType.Wheel; 
+    @property
+    wheelMotorMultiplier: number = 1;  
+
+    @property({ type: cc.Enum(WeaponMode) })
+    weaponMode: WeaponMode = WeaponMode.Melee;
 
     onLoad() {
         if (cc.director.getScene().name === "game") {
@@ -53,15 +63,14 @@ export default class Draggable extends cc.Component {
     }
 
     onDragMove(event: cc.Event.EventTouch) {
-        // --- 修正：核心也要能跟著滑鼠走，所以移除之前的 return ---
+
         let delta = event.getDelta();
         this.node.x += delta.x;
         this.node.y += delta.y;
     }
 
     onDragEnd() {
-        // --- 修正：核心也要執行放開後的吸附檢查，移除之前的 return ---
-        
+  
         if (!this.assemblyArea || !this.partsLayer) {
             this.handleFailedDrop();
             return;

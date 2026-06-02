@@ -101,7 +101,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "d4d84602-1c5a-479f-b8ad-7be4b398c57b"
+      "__uuid__": "79c89528-3812-44b5-b687-68344a754481"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -177,6 +177,7 @@
     },
     "_enabled": true,
     "partType": 0,
+    "wheelMotorMultiplier": 1,
     "_id": ""
   },
   {
@@ -194,6 +195,10 @@
     "dieSound": {
       "__uuid__": "b8f117b5-e4b7-4d7d-8080-9b972ae4ed0b"
     },
+    "showDebugHPBar": true,
+    "debugBarWidth": 34,
+    "debugBarHeight": 5,
+    "debugBarOffsetY": 0,
     "_id": ""
   },
   {
