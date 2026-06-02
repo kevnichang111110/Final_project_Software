@@ -104,6 +104,11 @@ export default class Health extends cc.Component {
         let myGroup = this.node.group;
         let otherGroup = otherCollider.node.group;
 
+        const isPlayer = myGroup.includes("PLAYER");
+        const isBot = otherGroup.includes("BOT");
+        const isOpponent = (isPlayer && isBot) || (myGroup.includes("BOT") && otherGroup.includes("PLAYER"));
+
+        if (!isOpponent) return;
         if (myGroup === otherGroup || otherGroup === "default") return;
 
         const worldManifold = contact.getWorldManifold();
@@ -151,7 +156,7 @@ export default class Health extends cc.Component {
     takeDamage(dmg: number) {
         if (this.currentHP <= 0 || this.isInvincible) return;
 
-        const maxDamagePerHit = 20;
+        const maxDamagePerHit = 50;
         const finalDmg = Math.min(dmg, maxDamagePerHit);
 
         this.currentHP -= finalDmg;

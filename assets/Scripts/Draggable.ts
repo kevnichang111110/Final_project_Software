@@ -11,6 +11,8 @@ export default class Draggable extends cc.Component {
 
     @property({ type: cc.Enum(PartType) })
     partType = PartType.LeftWheel; 
+    @property
+    wheelMotorMultiplier: number = 1;  
 
     onLoad() {
         if (cc.director.getScene().name === "game") {

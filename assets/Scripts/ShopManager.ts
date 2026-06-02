@@ -9,10 +9,14 @@ class ItemData {
     @property(cc.Integer) price: number = 0;
     @property(cc.SpriteFrame) icon: cc.SpriteFrame = null;
     @property(cc.Prefab) partPrefab: cc.Prefab = null; 
+    @property(cc.Integer)
+    unlockRound: number = 0;   // 0 = 一開始就會出現
 }
 
 @ccclass
 export default class ShopManager extends cc.Component {
+
+    @property(cc.Label)announcementLabel: cc.Label | null = null; 
 
     @property(cc.Label) goldLabel: cc.Label = null;
     @property(cc.Node) goldIcon: cc.Node = null;
@@ -50,6 +54,7 @@ export default class ShopManager extends cc.Component {
 
         this.updateGoldDisplay();
         this.updateScoreDisplay();
+        this.checkSpecialRoundAnnouncement(); 
 
         // 無論是不是第一輪，商店都必須保證 Assemblyarea 裡有 Core。
         if (GameManager.playerCarGrid.length > 0) {
@@ -213,14 +218,19 @@ export default class ShopManager extends cc.Component {
     }
 
     refreshSlot(index: number) {
-        if (this.itemPool.length === 0) return;
-        let randomIndex = Math.floor(Math.random() * this.itemPool.length);
-        let item = this.itemPool[randomIndex];
-        this.slotIcons[index].spriteFrame = item.icon;
-        this.slotPriceLabels[index].string = item.price.toString();
-        this.currentSlotPrices[index] = item.price;
-        this.currentItemPoolIndex[index] = randomIndex;
-    }
+    const pool = this.getEligibleItems();
+    const source = pool.length > 0 ? pool : this.itemPool;
+
+    if (source.length === 0) return;
+
+    let randomIndex = Math.floor(Math.random() * source.length);
+    let item = source[randomIndex];
+
+    this.slotIcons[index].spriteFrame = item.icon;
+    this.slotPriceLabels[index].string = item.price.toString();
+    this.currentSlotPrices[index] = item.price;
+    this.currentItemPoolIndex[index] = this.itemPool.indexOf(item);
+}
 
     onBuyButtonClick(event, customEventData: string) {
         let index = parseInt(customEventData);
@@ -290,5 +300,67 @@ export default class ShopManager extends cc.Component {
             if (res) return res;
         }
         return null;
+    }
+
+    private getCurrentRound(): number {
+        return GameManager.playerWins + GameManager.botWins;
+    }
+
+    private getEligibleItems(): ItemData[] {
+        const round = this.getCurrentRound();
+        return this.itemPool.filter(item => (item.unlockRound || 0) <= round);
+    }
+    private checkSpecialRoundAnnouncement() {
+        if (!this.announcementLabel) return;
+
+        const node = this.announcementLabel.node;
+        const totalRounds = GameManager.playerWins + GameManager.botWins;
+
+        let message = "";
+        let color = cc.Color.WHITE;
+
+        if (totalRounds === 2 || totalRounds === 4) {
+            // 第三、五回合 (2, 4 完成)
+            message = "New items in shop!";
+            color = cc.Color.WHITE;
+        } else if (totalRounds === 6) {
+            // 第七回合 (6 完成)
+            message = "Sudden death...";
+            color = cc.Color.RED;
+        }
+
+        if (message !== "") {
+            this.showFlashingNotice(message, color);
+        } else {
+            node.active = false;
+        }
+    }
+    private showFlashingNotice(msg: string, color: cc.Color) {
+        if (!this.announcementLabel) return;
+        const node = this.announcementLabel.node;
+
+        this.announcementLabel.string = msg;
+        node.color = color;
+        node.active = true;
+        node.opacity = 255;
+
+        node.stopAllActions();
+
+        cc.tween(node)
+            .repeatForever(
+                cc.tween().to(0.4, { opacity: 80 }).to(0.4, { opacity: 255 })
+            )
+            .start();
+
+        // 5秒後消失
+        this.scheduleOnce(() => {
+            node.stopAllActions();
+            cc.tween(node)
+                .to(0.5, { opacity: 0 })
+                .call(() => {
+                    node.active = false;
+                })
+                .start();
+        }, 5);
     }
 }

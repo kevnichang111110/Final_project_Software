@@ -101,7 +101,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "e849929c-460a-4569-a072-e93dce17ac62"
+      "__uuid__": "ed338974-0afc-452e-a72d-5191de9553ff"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -177,6 +177,7 @@
     },
     "_enabled": true,
     "partType": 4,
+    "wheelMotorMultiplier": 1,
     "_id": ""
   },
   {

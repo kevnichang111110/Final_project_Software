@@ -30,10 +30,13 @@
       },
       {
         "__id__": 5
+      },
+      {
+        "__id__": 6
       }
     ],
     "_prefab": {
-      "__id__": 6
+      "__id__": 7
     },
     "_opacity": 255,
     "_color": {
@@ -98,7 +101,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "b60b8d60-7638-4271-bc9d-1035ec059e2a"
+      "__uuid__": "0f6fd93b-7ff8-4753-a88c-39a620bfb39c"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -147,7 +150,8 @@
       "__id__": 1
     },
     "_enabled": true,
-    "partType": 2,
+    "partType": 5,
+    "wheelMotorMultiplier": 1,
     "_id": ""
   },
   {
@@ -170,6 +174,23 @@
       "y": 0
     },
     "_radius": 20,
+    "_id": ""
+  },
+  {
+    "__type__": "33ce5GoCvJHBqbLT5BI5CpD",
+    "_name": "",
+    "_objFlags": 0,
+    "node": {
+      "__id__": 1
+    },
+    "_enabled": true,
+    "maxHP": 100,
+    "hitSound": null,
+    "dieSound": null,
+    "showDebugHPBar": true,
+    "debugBarWidth": 34,
+    "debugBarHeight": 5,
+    "debugBarOffsetY": 0,
     "_id": ""
   },
   {
