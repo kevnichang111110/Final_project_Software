@@ -13,7 +13,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Wheel1",
+    "_name": "Bullet",
     "_objFlags": 0,
     "_parent": null,
     "_children": [],
@@ -30,13 +30,10 @@
       },
       {
         "__id__": 5
-      },
-      {
-        "__id__": 6
       }
     ],
     "_prefab": {
-      "__id__": 7
+      "__id__": 6
     },
     "_opacity": 255,
     "_color": {
@@ -48,8 +45,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 40,
-      "height": 40
+      "width": 16,
+      "height": 16
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -60,8 +57,8 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        457.268,
-        208.578,
+        487.352,
+        200.556,
         0,
         0,
         0,
@@ -81,8 +78,8 @@
     "_skewX": 0,
     "_skewY": 0,
     "_is3DNode": false,
-    "_groupIndex": 2,
-    "groupIndex": 2,
+    "_groupIndex": 6,
+    "groupIndex": 6,
     "_id": ""
   },
   {
@@ -101,7 +98,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "0f6fd93b-7ff8-4753-a88c-39a620bfb39c"
+      "__uuid__": "0ff03bdd-cee3-4825-991b-4342b011f261"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -127,7 +124,7 @@
     "_enabled": true,
     "_type": 2,
     "_allowSleep": true,
-    "_gravityScale": 1,
+    "_gravityScale": 0.2,
     "_linearDamping": 0,
     "_angularDamping": 0,
     "_linearVelocity": {
@@ -138,21 +135,20 @@
     "_angularVelocity": 0,
     "_fixedRotation": false,
     "enabledContactListener": true,
-    "bullet": false,
+    "bullet": true,
     "awakeOnLoad": true,
     "_id": ""
   },
   {
-    "__type__": "e6cb5CYYIFGpq0vLG27YUYU",
+    "__type__": "240d2LRL9pE1LM3ZWz+4GBA",
     "_name": "",
     "_objFlags": 0,
     "node": {
       "__id__": 1
     },
     "_enabled": true,
-    "partType": 5,
-    "wheelMotorMultiplier": 1,
-    "weaponMode": 0,
+    "damage": 20,
+    "lifeTime": 10,
     "_id": ""
   },
   {
@@ -164,34 +160,17 @@
     },
     "_enabled": true,
     "tag": 0,
-    "_density": 2,
+    "_density": 1,
     "_sensor": false,
-    "_friction": 0.7,
-    "_restitution": 0.1,
+    "_friction": 0.2,
+    "_restitution": 0,
     "body": null,
     "_offset": {
       "__type__": "cc.Vec2",
       "x": 0,
       "y": 0
     },
-    "_radius": 20,
-    "_id": ""
-  },
-  {
-    "__type__": "33ce5GoCvJHBqbLT5BI5CpD",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "maxHP": 100,
-    "hitSound": null,
-    "dieSound": null,
-    "showDebugHPBar": true,
-    "debugBarWidth": 34,
-    "debugBarHeight": 5,
-    "debugBarOffsetY": 0,
+    "_radius": 8,
     "_id": ""
   },
   {

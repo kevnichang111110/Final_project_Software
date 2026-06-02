@@ -1096,6 +1096,9 @@
       },
       {
         "__uuid__": "cd073326-815d-4cde-9b92-9a9c561cbad2"
+      },
+      {
+        "__uuid__": "f83df3f8-badb-414e-8271-f94a6a1f6227"
       }
     ],
     "settingsPrefab": {
@@ -1111,7 +1114,7 @@
       "__uuid__": "d7da9cae-7d64-4130-91b4-83dad6b435c2"
     },
     "countdownBgmClip": {
-      "__uuid__": "6b6b9135-5c32-4a0e-bc29-7bf69a90eece"
+      "__uuid__": "92325f9f-64b3-4ffd-828a-999221fc8258"
     },
     "victorySfx": {
       "__uuid__": "d58ba421-f533-4dd6-8559-54bc0d0d10b9"
@@ -1119,6 +1122,14 @@
     "defeatSfx": {
       "__uuid__": "8eb37dbe-74d8-437d-821d-93ab297e0dd7"
     },
+    "bulletPrefab": {
+      "__uuid__": "954308fb-57e0-4316-a7a2-6b0e83b1715b"
+    },
+    "gunFireInterval": 0.25,
+    "botGunFireInterval": 0.9,
+    "bulletSpeed": 1600,
+    "bulletDamage": 20,
+    "bulletLifetime": 3,
     "_id": "09/C8EfolKyZsIEIA8eZTI"
   },
   {

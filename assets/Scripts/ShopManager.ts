@@ -262,11 +262,41 @@ export default class ShopManager extends cc.Component {
     }
     
     showLackGoldTip() {
-        this.tipLabel.stopAllActions();
-        this.tipLabel.opacity = 255;
-        cc.tween(this.tipLabel).delay(1.0).to(0.5, { opacity: 0 }).start();   
-        this.goldIcon.stopAllActions();
-        cc.tween(this.goldIcon).to(0.05, { scale: 1.3 }).to(0.05, { scale: 1.0 }).start();
+        // 1. 「金幣不足」文字淡出效果
+        if (this.tipLabel) {
+            this.tipLabel.stopAllActions();
+            this.tipLabel.opacity = 255;
+            cc.tween(this.tipLabel)
+                .delay(1.0)
+                .to(0.5, { opacity: 0 })
+                .start();
+        }
+
+        // 2. 金幣圖標 (icon) 縮放抖動效果
+        if (this.goldIcon) {
+            this.goldIcon.stopAllActions();
+            this.goldIcon.scale = 1;
+            cc.tween(this.goldIcon)
+                .to(0.05, { scale: 1.3 })
+                .to(0.05, { scale: 1.0 })
+                .to(0.05, { scale:1.2 }) // 多抖一下更有質感
+                .to(0.05, { scale:1.0 })
+                .start();
+        }
+
+        // 3. 【補回】金錢數字 (goldLabel) 紅白閃爍效果
+        if (this.goldLabel) {
+            let labelNode = this.goldLabel.node;
+            labelNode.stopAllActions();
+            labelNode.color = cc.Color.WHITE; // 確保重設為白色開始
+
+            cc.tween(labelNode)
+                .to(0.1, { color: cc.Color.RED })   // 變紅
+                .to(0.1, { color: cc.Color.WHITE }) // 變白
+                .union()                            // 將變紅變白打包成一組動作
+                .repeat(5)                          // 重複 5 次，總共閃爍 1 秒
+                .start();
+        }
     }
 
     onOpenSettings() {
