@@ -82,8 +82,9 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    ROTATE_TORQUE: 1200000,   // A/D 在空中旋轉車身的扭矩
-    MAX_ANGULAR_SPEED: 220,   // 角速度上限（度/秒），避免無限加速狂轉
+    ROTATE_TORQUE: 350000,    // A/D 在空中旋轉車身的扭矩（原本 1200000 太猛，調低）
+    MAX_ANGULAR_SPEED: 120,   // 角速度上限（度/秒），愈小轉得愈慢
+    GROUNDED_PROBE: 18,       // 著地偵測：輪子底部再往下探測這麼多 px
 };
 
 // 特殊輪子能力
@@ -117,6 +118,6 @@ export const SCRAMBLE = {
 
 // 回合流程
 export const FLOW = {
-    USE_SCRAMBLE: true,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
+    USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
 };
