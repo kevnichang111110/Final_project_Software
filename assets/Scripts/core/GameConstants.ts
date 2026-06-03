@@ -1,0 +1,158 @@
+// core/GameConstants.ts
+// 集中管理散落在各檔案的「魔術數字」與分組字串。
+// 注意：已經是編輯器 @property 的欄位（例如 BattleManager 的 gunFireInterval、bulletSpeed）
+// 仍留在組件上以保留可調性，這裡只收「寫死在程式碼裡」的常數。
+
+export const GRID = {
+    CELL_SIZE: 40,      // 每格 40px
+    COUNT: 5,           // 5x5 網格
+    AREA_MAX: 200,      // 組裝區範圍 0 ~ 200
+    SNAP_OFFSET: 20,    // 吸附到格子中心的偏移
+};
+
+// 物理分組名稱（節點 group）。判斷陣營時是用 includes(PLAYER_KEY) 之類的關鍵字。
+export const GROUP = {
+    DEFAULT: "default",
+    BOUNDARY: "boundary",
+    PLAYER_PART: "PLAYER_PART",
+    BOT_PART: "BOT_PART",
+    PLAYER_BULLET: "PLAYER_BULLET",
+    BOT_BULLET: "BOT_BULLET",
+    PLAYER_KEY: "PLAYER",
+    BOT_KEY: "BOT",
+};
+
+export const PHYSICS = {
+    GRAVITY_Y: -960,
+    VELOCITY_ITERATIONS: 40,
+    POSITION_ITERATIONS: 40,
+    FIXED_TIME_STEP: 1 / 60,
+};
+
+export const BATTLE = {
+    MATCH_TIME: 20,             // 單局秒數
+    COUNTDOWN_FROM: 2,          // 開場倒數起始值
+    SUDDEN_DEATH_PARTS: 40,     // 驟死時掉落的零件數
+    SUDDEN_DEATH_TICK: 0.25,    // 驟死扣血間隔
+    PLAYER_CORE_DOT: 6,         // 驟死時玩家核心每跳扣血
+    BOT_CORE_DOT: 5,            // 驟死時敵方核心每跳扣血
+    BOT_HP_BONUS_PER_ROUND: 10, // 敵方每回合血量加成
+    WIN_GOLD: 200,              // 每局結束發放金幣
+    WINS_TO_FINISH: 4,          // 先贏幾場結束整場（七戰四勝）
+};
+
+export const JOINT = {
+    WHEEL_FREQUENCY: 10,
+    WHEEL_MAX_TORQUE: 400000,
+    WHEEL_TARGET_SPEED: -600,   // 玩家輪子目標馬達速度（乘上 moveDir）
+    WHEEL_SMOOTHING: 0.15,      // 輪速插值平滑
+    WELD_FREQUENCY: 0,
+    MELEE_MAX_TORQUE: 10000,
+    MELEE_ATTACK_SPEED: 1500,   // 玩家近戰揮出
+    MELEE_RETURN_SPEED: -500,   // 玩家近戰收回
+    // 近戰武器角度限制（依陣營）
+    PLAYER_LOWER_ANGLE: -20,
+    PLAYER_UPPER_ANGLE: 120,
+    BOT_LOWER_ANGLE: -120,
+    BOT_UPPER_ANGLE: 20,
+};
+
+export const BOT = {
+    CHASE_DIST: 220,    // 距離大於此值就追
+    RETREAT_DIST: 120,  // 距離小於此值就退
+    ATTACK_RANGE: 300,  // 進入此距離才揮武器
+    MOVE_SPEED: 1500,
+    ATTACK_SPEED: 1000,
+    RETURN_SPEED: -400,
+};
+
+export const DAMAGE = {
+    COLLISION_THRESHOLD: 260,   // 相對速度低於此值不造成碰撞傷害（提高 → 更難造成碰撞傷害）
+    COLLISION_DIVISOR: 16,      // (相對速度 - 門檻) / 此值 = 傷害（加大 → 傷害變低）
+    WEAPON_VS_WEAPON: 0.2,      // 武器互撞折扣
+    SELF_WEAPON_MULT: 0.05,     // 我是武器去撞人，我受的傷
+    OTHER_WEAPON_MULT: 4.0,     // 別人用武器撞我，我受的傷
+    BULLET_VS_WEAPON: 0.5,      // 子彈打到武器部件的折扣
+    MAX_PER_HIT: 50,            // 單次最大傷害
+    MIN_TO_APPLY: 0.5,          // 低於此值的傷害忽略
+    INVINCIBILITY: 0.1,         // 受擊後無敵時間
+};
+
+// === 以下為新功能新增的常數 ===
+
+// 空中左右旋轉（施加在核心剛體上的扭矩）
+export const AIR = {
+    ROTATE_TORQUE: 220000,    // 旋轉扭矩（再調低）
+    MAX_ANGULAR_SPEED: 80,    // 角速度上限（度/秒），愈小轉得愈慢（再調低）
+    GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
+};
+
+// 特殊輪子能力
+export const ABILITY = {
+    JET_FORCE: 2600000,       // 噴射輪：boost 時每幀向上推力
+    BOUNCE_RESTITUTION: 1.1,  // 彈跳輪：碰撞反彈係數
+};
+
+// 滑鼠瞄準砲（會傷害雙方方塊的子彈）
+export const MOUSE_BULLET = {
+    SPEED: 2000,
+    DAMAGE: 25,
+    LIFETIME: 2.5,
+    FIRE_INTERVAL: 0.18,
+};
+
+// 搶奪階段（第 9 點，即時競速拍箱子）
+export const SCRAMBLE = {
+    DURATION: 15,          // 限時秒數
+    MIN_BOXES: 4,
+    MAX_BOXES: 5,
+    MOVE_SPEED: 420,       // grabber 水平速度
+    JUMP_IMPULSE: 9000,    // 跳躍衝量
+    GRABBER_SIZE: 60,
+    BOX_SIZE: 70,
+    GROUND_Y: -300,        // 地面高度（場景中心為原點）
+    ARENA_WIDTH: 1200,
+    BOT_JUMP_DY: 50,       // Bot 目標箱子高出這麼多就跳
+    AFTER_SCENE: "Shop",   // 搶奪結束後前往的場景
+};
+
+// 回合流程
+export const FLOW = {
+    USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
+    SCRAMBLE_SCENE: "Scramble",
+    USE_WALLRIDE: false,      // 牆面行駛：預設關閉。等你做好環形賽道、要測爬牆時再設 true
+};
+
+// 近戰揮砍冷卻
+export const MELEE = {
+    COOLDOWN: 0.55,            // 兩次揮砍之間的冷卻秒數
+    REACH_TOLERANCE: 3,        // 視為「揮到頂」的角度容差（度）
+};
+
+// 滑鼠瞄準砲（旋轉砲塔）
+export const MOUSE_TURRET = {
+    HALF_ARC: 85,              // 可旋轉半角（度）；總範圍 = 2×，預設 170 度（略小於 180）。想要正負 90 = 180 就填 90
+    AIM_GAIN: 20,              // 瞄準 P 控制器增益：角度差 × 此值 = 馬達速度
+    AIM_SPEED: 1200,           // 瞄準馬達最大速度（度/秒）
+    TORQUE: 600000,            // 瞄準馬達扭矩（要夠大才推得動槍）
+};
+
+// 牆面行駛 / 繞圈（相對地面重力）—— 這些是手感調校的主要旋鈕
+export const WALLRIDE = {
+    PROBE: 90,            // 從核心往車底探測地面的射線長度（要 > 車子半高）
+    STICK: 0.5,           // 額外貼附力（相對重力的比例），愈大愈黏牆
+    // 介入門檻：依「地面相對水平的傾斜度」漸進啟動。tilt = (1 - 法線.y)/2：平地=0、牆=0.5、天花板=1
+    // tilt 低於 ENGAGE_LO（約 18 度以內，含地面小顛簸）→ 完全不介入，交給一般物理 → 不會亂彈
+    // tilt 高於 ENGAGE_HI（約 50 度以上）→ 完全啟動牆面行駛
+    // tilt 低於 ENGAGE_LO（約 50 度以內，含地面顛簸）→ 完全不介入；高於 ENGAGE_HI（約 70 度以上）→ 完全啟動
+    ENGAGE_LO: 0.18,
+    ENGAGE_HI: 0.32,
+    NORMAL_SMOOTH: 0.25,  // 地面法線平滑係數（愈小愈平滑，抗顛簸）
+    ALIGN_GAIN: 22000,    // 對齊扭矩增益（車頂轉向地面法線的力道）
+    ALIGN_DAMP: 12000,    // 對齊阻尼（抑制過衝抖動）
+    ALIGN_MAX: 1500000,   // 對齊扭矩上限
+    WALL_THRESHOLD: 0.4,  // 地面法線水平分量大於此值視為「在牆上」才允許脫離
+    DETACH_IMPULSE: 7000, // 脫離時往牆外彈的衝量
+    DETACH_SPIN: 1200,    // 脫離時的翻轉角衝量
+    DETACH_TIME: 0.5,     // 脫離後多久內不重新吸附（讓它飛出去）
+};

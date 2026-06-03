@@ -1,37 +1,53 @@
-import GameManager, { GridPart } from "./GameManager";
-import { PartType } from "./Slotsetting";
+// ShopManager.ts
+// 變更：原本自己實作的 cleanName / isCoreNode / getPrefabByName 改為委派 core/PartUtils，
+//       移除重複實作；網格數字改用 GameConstants.GRID。其餘商店/組裝邏輯不變。
+//       （檔名/類別名/所有 @property 不變，編輯器綁定不受影響。）
 
-const {ccclass, property} = cc._decorator;
+import GameManager, { GridPart } from "./GameManager";
+import { PartType } from "./core/PartType";
+import { GRID } from "./core/GameConstants";
+import {
+    cleanName as utilCleanName,
+    isCoreNode as utilIsCoreNode,
+    getPrefabByName as utilGetPrefabByName,
+} from "./core/PartUtils";
+
+const { ccclass, property } = cc._decorator;
 
 @ccclass("ItemData")
 class ItemData {
     @property(cc.String) name: string = "";
     @property(cc.Integer) price: number = 0;
     @property(cc.SpriteFrame) icon: cc.SpriteFrame = null;
-    @property(cc.Prefab) partPrefab: cc.Prefab = null; 
+    @property(cc.Prefab) partPrefab: cc.Prefab = null;
     @property(cc.Integer)
     unlockRound: number = 0;   // 0 = 一開始就會出現
+
+    @property({ type: cc.Enum(PartType), tooltip: "這個商品屬於哪一類（方塊/武器/輪子）" })
+    category = PartType.Body;
 }
 
 @ccclass
 export default class ShopManager extends cc.Component {
 
-    @property(cc.Label)announcementLabel: cc.Label | null = null; 
+    @property(cc.Label) announcementLabel: cc.Label | null = null;
 
     @property(cc.Label) goldLabel: cc.Label = null;
     @property(cc.Node) goldIcon: cc.Node = null;
     @property(cc.Node) tipLabel: cc.Node = null;
-    @property(cc.Label) scoreLabel: cc.Label = null; 
+    @property(cc.Label) scoreLabel: cc.Label = null;
 
     @property([ItemData]) itemPool: ItemData[] = [];
     @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
     @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
-    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
+    @property({ type: [cc.Prefab], tooltip: "選填：只放『不在商店販售、也不是核心』的零件即可。商店商品的 prefab 會自動從 itemPool 取得，不必再重複拖一次" })
+    allPrefabs: cc.Prefab[] = [];
 
-    // 可直接把 Core prefab 拖到這裡；如果沒拖，會從 allPrefabs 裡找名字叫 Core 的 prefab。
+    // 實際查找用的零件清單：onLoad 時自動由 itemPool + corePrefab + allPrefabs 合併產生
+    private partPrefabs: cc.Prefab[] = [];
+
     @property(cc.Prefab) corePrefab: cc.Prefab | null = null;
 
-    // Core 固定在 5x5 組裝區中心格，玩家不能拿出來。
     @property(cc.Integer) coreGridX: number = 2;
     @property(cc.Integer) coreGridY: number = 2;
 
@@ -44,6 +60,8 @@ export default class ShopManager extends cc.Component {
     private bgmAudioID: number = -1;
 
     onLoad() {
+        this.buildPrefabList();
+
         if (this.bgmClip) {
             this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
         }
@@ -54,18 +72,61 @@ export default class ShopManager extends cc.Component {
 
         this.updateGoldDisplay();
         this.updateScoreDisplay();
-        this.checkSpecialRoundAnnouncement(); 
+        this.checkSpecialRoundAnnouncement();
 
-        // 無論是不是第一輪，商店都必須保證 Assemblyarea 裡有 Core。
         if (GameManager.playerCarGrid.length > 0) {
             this.reconstructCarForEditing();
         } else {
             this.ensureCoreInAssembly();
         }
 
+        this.grantClaimedTools();
+
+        this.slotCategories = [this.slot0Category, this.slot1Category, this.slot2Category];
+
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
         }
+
+        this.fixSlotIconLayering();
+    }
+
+    // 讓商店格子的「物品圖片」顯示在按鈕前面（圖片在前）。
+    // 圖片是純 Sprite、不掛 Button/觸控，所以即使疊在按鈕上面，觸控仍會交給後面的按鈕
+    //（選取優先級在按鈕後面）。若你的圖片目前蓋掉按鈕點不到，請見下方說明。
+    private fixSlotIconLayering() {
+        for (const sp of this.slotIcons) {
+            if (!sp || !sp.node) continue;
+            sp.node.zIndex = 5;   // 排到同層按鈕之上（數字比按鈕大即可）
+        }
+    }
+
+    // 把搶奪階段玩家(P1)搶到的道具，免費生成在商店上方讓玩家拖去組裝
+    private grantClaimedTools() {
+        // 防呆：若 GameManager 尚未更新到含此方法，直接跳過，避免商店進場報錯
+        if (typeof (GameManager as any).consumeClaimedTools !== "function") return;
+
+        let tools: string[] = [];
+        try {
+            tools = (GameManager as any).consumeClaimedTools("P1") || [];
+        } catch (e) {
+            tools = [];
+        }
+        if (tools.length === 0) return;
+
+        let i = 0;
+        for (const name of tools) {
+            const prefab = this.getPrefabByName(name);
+            if (!prefab) continue;
+            const part = cc.instantiate(prefab);
+            part.parent = this.node;
+            part.setPosition(-220 + i * 90, 220);
+            const rb = part.getComponent(cc.RigidBody);
+            if (rb) rb.type = cc.RigidBodyType.Static;   // 靜止等玩家拖，不會掉走
+            i++;
+        }
+
+        this.showFlashingNotice("搶到的道具已送達！", cc.Color.GREEN);
     }
 
     reconstructCarForEditing() {
@@ -79,12 +140,10 @@ export default class ShopManager extends cc.Component {
                 let partNode = cc.instantiate(prefab);
                 partNode.parent = partLayer;
 
-                // --- 修改處：核心不再強制使用 coreGridX，而是使用存檔座標 ---
                 const gx = data.gridX;
                 const gy = data.gridY;
-
-                let px = gx * 40 + 20;
-                let py = gy * 40 + 20;
+                let px = gx * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
+                let py = gy * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
                 partNode.setPosition(px, py);
                 partNode.angle = 0;
 
@@ -95,8 +154,7 @@ export default class ShopManager extends cc.Component {
     }
 
     /**
-     * 按下 Fight 按鈕時，掃描組裝區，紀錄所有零件的網格座標。
-     * 沒有 Core 不能開始戰鬥。
+     * 按下 Fight 按鈕：掃描組裝區，紀錄所有零件的網格座標。沒有 Core 不能開始。
      */
     Fight() {
         console.log(">>> 網格化掃描開始...");
@@ -113,15 +171,12 @@ export default class ShopManager extends cc.Component {
             return;
         }
 
-        // 清空舊的網格數據
         GameManager.playerCarGrid = [];
 
         for (let p of partLayer.children) {
-            // 透過本地座標反推它是第幾格 (gx, gy)
-            let gx = Math.floor(p.x / 40);
-            let gy = Math.floor(p.y / 40);
-            
-            // 去掉名字裡的 (Clone)
+            let gx = Math.floor(p.x / GRID.CELL_SIZE);
+            let gy = Math.floor(p.y / GRID.CELL_SIZE);
+
             let rawName = p.name.replace(/\([^)]*\)/g, "").trim();
 
             GameManager.playerCarGrid.push({
@@ -133,8 +188,6 @@ export default class ShopManager extends cc.Component {
         }
 
         console.log("✅ 成功保存網格配置:", JSON.stringify(GameManager.playerCarGrid));
-
-        // 執行跳轉
         cc.director.loadScene("game");
     }
 
@@ -153,14 +206,35 @@ export default class ShopManager extends cc.Component {
         return prefab || null;
     }
 
+    // --- 以下三個改為委派 core/PartUtils，移除重複實作 ---
     private cleanName(name: string): string {
-        return name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
+        return utilCleanName(name);
     }
 
     private isCoreNode(node: cc.Node): boolean {
-        const draggable = node.getComponent("Draggable") as any;
-        return (draggable && draggable.partType === PartType.Core) || this.cleanName(node.name) === "core";
+        return utilIsCoreNode(node);
     }
+
+    getPrefabByName(name: string): cc.Prefab | undefined {
+        return utilGetPrefabByName(this.partPrefabs, name);
+    }
+
+    // 把 itemPool 裡每個商品的 partPrefab + corePrefab + （選填的）allPrefabs 合併成一份零件清單，
+    // 並依名稱去重。如此商店只需設定 itemPool 一次即可，不必再另外維護 allPrefabs。
+    private buildPrefabList() {
+        const list: cc.Prefab[] = [];
+        const seen: { [name: string]: boolean } = {};
+        const add = (p: cc.Prefab | null) => {
+            if (p && !seen[p.name]) { seen[p.name] = true; list.push(p); }
+        };
+
+        for (const item of this.itemPool) if (item) add(item.partPrefab);
+        add(this.corePrefab);
+        for (const p of this.allPrefabs) add(p);   // 仍可手動補充不在商店賣的零件
+
+        this.partPrefabs = list;
+    }
+    // ----------------------------------------------------
 
     private hasCoreNode(partLayer: cc.Node): boolean {
         return partLayer.children.some(p => this.isCoreNode(p));
@@ -177,25 +251,21 @@ export default class ShopManager extends cc.Component {
 
         const drag = partNode.getComponent("Draggable") as any;
         if (drag) {
-            // --- 修改處：核心現在可以被拖動 ---
-            drag.enabled = true; 
+            drag.enabled = true;
             if (isCore) {
                 drag.partType = PartType.Core;
-                // 你可以在這裡給核心加上特殊標記，讓 Draggable 知道「不能刪除它」
             }
         }
     }
 
-     private ensureCoreInAssembly() {
+    private ensureCoreInAssembly() {
         let partLayer = this.getPartLayer();
         if (!partLayer) return;
 
-        // 如果場上已經有核心了，就什麼都不做（讓它待在玩家放的地方）
         if (this.hasCoreNode(partLayer)) return;
 
-        // 只有在完全沒核心時，才在預設中心點生成一個
-        const coreX = this.coreGridX * 40 + 20;
-        const coreY = this.coreGridY * 40 + 20;
+        const coreX = this.coreGridX * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
+        const coreY = this.coreGridY * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
 
         const prefab = this.getCorePrefab();
         if (!prefab) return;
@@ -217,20 +287,34 @@ export default class ShopManager extends cc.Component {
         }
     }
 
+    @property({ type: cc.Enum(PartType), tooltip: "第 1 格（買按鈕 CustomEventData = 0）賣哪一類" })
+    slot0Category = PartType.Body;
+    @property({ type: cc.Enum(PartType), tooltip: "第 2 格（買按鈕 CustomEventData = 1）賣哪一類" })
+    slot1Category = PartType.Weapon;
+    @property({ type: cc.Enum(PartType), tooltip: "第 3 格（買按鈕 CustomEventData = 2）賣哪一類" })
+    slot2Category = PartType.Wheel;
+
+    // 執行期由上面三個欄位組出，索引對應按鈕的 CustomEventData
+    private slotCategories: PartType[] = [];
+
     refreshSlot(index: number) {
-    const pool = this.getEligibleItems();
-    const source = pool.length > 0 ? pool : this.itemPool;
+        const eligibleAll = this.getEligibleItems();
+        const category = this.slotCategories[index] != null ? this.slotCategories[index] : PartType.Body;
 
-    if (source.length === 0) return;
+        // 先抽該類別；該類別目前沒有可解鎖商品時，退回全部（避免空格子）
+        const byCategory = eligibleAll.filter(it => (it.category != null ? it.category : PartType.Body) === category);
+        const source = byCategory.length > 0 ? byCategory : (eligibleAll.length > 0 ? eligibleAll : this.itemPool);
 
-    let randomIndex = Math.floor(Math.random() * source.length);
-    let item = source[randomIndex];
+        if (source.length === 0) return;
 
-    this.slotIcons[index].spriteFrame = item.icon;
-    this.slotPriceLabels[index].string = item.price.toString();
-    this.currentSlotPrices[index] = item.price;
-    this.currentItemPoolIndex[index] = this.itemPool.indexOf(item);
-}
+        let randomIndex = Math.floor(Math.random() * source.length);
+        let item = source[randomIndex];
+
+        this.slotIcons[index].spriteFrame = item.icon;
+        this.slotPriceLabels[index].string = item.price.toString();
+        this.currentSlotPrices[index] = item.price;
+        this.currentItemPoolIndex[index] = this.itemPool.indexOf(item);
+    }
 
     onBuyButtonClick(event, customEventData: string) {
         let index = parseInt(customEventData);
@@ -250,7 +334,7 @@ export default class ShopManager extends cc.Component {
     spawnPart(prefab: cc.Prefab, btnNode: cc.Node) {
         if (!prefab) return;
         let part = cc.instantiate(prefab);
-        part.parent = this.node; // 先掛在 Canvas 下方便掉落
+        part.parent = this.node;
         let worldPos = btnNode.convertToWorldSpaceAR(cc.v2(0, 0));
         let localPos = this.node.convertToNodeSpaceAR(worldPos);
         part.setPosition(localPos);
@@ -260,9 +344,8 @@ export default class ShopManager extends cc.Component {
             rb.applyLinearImpulse(cc.v2(0, 500), rb.getWorldCenter(), true);
         }
     }
-    
+
     showLackGoldTip() {
-        // 1. 「金幣不足」文字淡出效果
         if (this.tipLabel) {
             this.tipLabel.stopAllActions();
             this.tipLabel.opacity = 255;
@@ -272,29 +355,27 @@ export default class ShopManager extends cc.Component {
                 .start();
         }
 
-        // 2. 金幣圖標 (icon) 縮放抖動效果
         if (this.goldIcon) {
             this.goldIcon.stopAllActions();
             this.goldIcon.scale = 1;
             cc.tween(this.goldIcon)
                 .to(0.05, { scale: 1.3 })
                 .to(0.05, { scale: 1.0 })
-                .to(0.05, { scale:1.2 }) // 多抖一下更有質感
-                .to(0.05, { scale:1.0 })
+                .to(0.05, { scale: 1.2 })
+                .to(0.05, { scale: 1.0 })
                 .start();
         }
 
-        // 3. 【補回】金錢數字 (goldLabel) 紅白閃爍效果
         if (this.goldLabel) {
             let labelNode = this.goldLabel.node;
             labelNode.stopAllActions();
-            labelNode.color = cc.Color.WHITE; // 確保重設為白色開始
+            labelNode.color = cc.Color.WHITE;
 
             cc.tween(labelNode)
-                .to(0.1, { color: cc.Color.RED })   // 變紅
-                .to(0.1, { color: cc.Color.WHITE }) // 變白
-                .union()                            // 將變紅變白打包成一組動作
-                .repeat(5)                          // 重複 5 次，總共閃爍 1 秒
+                .to(0.1, { color: cc.Color.RED })
+                .to(0.1, { color: cc.Color.WHITE })
+                .union()
+                .repeat(5)
                 .start();
         }
     }
@@ -304,12 +385,10 @@ export default class ShopManager extends cc.Component {
             let node = cc.instantiate(this.settingsPrefab);
             let canvas = cc.find("Canvas");
             node.parent = canvas;
-            
-            // --- 核心修正：強制歸零座標並置頂 ---
-            node.setPosition(0, 0); 
+
+            node.setPosition(0, 0);
             node.setSiblingIndex(canvas.childrenCount - 1);
-            
-            // 如果 Prefab 裡有 Widget，強制刷新一次對齊
+
             let widget = node.getComponent(cc.Widget);
             if (widget) {
                 widget.updateAlignment();
@@ -318,11 +397,6 @@ export default class ShopManager extends cc.Component {
     }
 
     // --- 輔助函數 ---
-    getPrefabByName(name: string): cc.Prefab | undefined {
-        let cleanName = name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
-        return this.allPrefabs.find(p => p && p.name.trim().toLowerCase() === cleanName);
-    }
-
     findNodeRecursive(root: cc.Node, name: string): cc.Node | null {
         if (root.name === name) return root;
         for (let child of root.children) {
@@ -340,6 +414,7 @@ export default class ShopManager extends cc.Component {
         const round = this.getCurrentRound();
         return this.itemPool.filter(item => (item.unlockRound || 0) <= round);
     }
+
     private checkSpecialRoundAnnouncement() {
         if (!this.announcementLabel) return;
 
@@ -350,11 +425,9 @@ export default class ShopManager extends cc.Component {
         let color = cc.Color.WHITE;
 
         if (totalRounds === 2 || totalRounds === 4) {
-            // 第三、五回合 (2, 4 完成)
             message = "New items in shop!";
             color = cc.Color.WHITE;
         } else if (totalRounds === 6) {
-            // 第七回合 (6 完成)
             message = "Sudden death...";
             color = cc.Color.RED;
         }
@@ -365,6 +438,7 @@ export default class ShopManager extends cc.Component {
             node.active = false;
         }
     }
+
     private showFlashingNotice(msg: string, color: cc.Color) {
         if (!this.announcementLabel) return;
         const node = this.announcementLabel.node;
@@ -382,7 +456,6 @@ export default class ShopManager extends cc.Component {
             )
             .start();
 
-        // 5秒後消失
         this.scheduleOnce(() => {
             node.stopAllActions();
             cc.tween(node)
