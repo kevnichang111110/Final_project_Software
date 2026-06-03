@@ -22,6 +22,9 @@ class ItemData {
     @property(cc.Prefab) partPrefab: cc.Prefab = null;
     @property(cc.Integer)
     unlockRound: number = 0;   // 0 = 一開始就會出現
+
+    @property({ type: cc.Enum(PartType), tooltip: "這個商品屬於哪一類（方塊/武器/輪子）" })
+    category = PartType.Body;
 }
 
 @ccclass
@@ -71,9 +74,31 @@ export default class ShopManager extends cc.Component {
             this.ensureCoreInAssembly();
         }
 
+        this.grantClaimedTools();
+
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
         }
+    }
+
+    // 把搶奪階段玩家(P1)搶到的道具，免費生成在商店上方讓玩家拖去組裝
+    private grantClaimedTools() {
+        const tools = GameManager.consumeClaimedTools("P1");
+        if (!tools || tools.length === 0) return;
+
+        let i = 0;
+        for (const name of tools) {
+            const prefab = this.getPrefabByName(name);
+            if (!prefab) continue;
+            const part = cc.instantiate(prefab);
+            part.parent = this.node;
+            part.setPosition(-220 + i * 90, 220);
+            const rb = part.getComponent(cc.RigidBody);
+            if (rb) rb.type = cc.RigidBodyType.Static;   // 靜止等玩家拖，不會掉走
+            i++;
+        }
+
+        this.showFlashingNotice("搶到的道具已送達！", cc.Color.GREEN);
     }
 
     reconstructCarForEditing() {
@@ -218,9 +243,16 @@ export default class ShopManager extends cc.Component {
         }
     }
 
+    // 三個格子固定對應：0=方塊、1=武器、2=輪子
+    private slotCategories: PartType[] = [PartType.Body, PartType.Weapon, PartType.Wheel];
+
     refreshSlot(index: number) {
-        const pool = this.getEligibleItems();
-        const source = pool.length > 0 ? pool : this.itemPool;
+        const eligibleAll = this.getEligibleItems();
+        const category = this.slotCategories[index] != null ? this.slotCategories[index] : PartType.Body;
+
+        // 先抽該類別；該類別目前沒有可解鎖商品時，退回全部（避免空格子）
+        const byCategory = eligibleAll.filter(it => (it.category != null ? it.category : PartType.Body) === category);
+        const source = byCategory.length > 0 ? byCategory : (eligibleAll.length > 0 ? eligibleAll : this.itemPool);
 
         if (source.length === 0) return;
 

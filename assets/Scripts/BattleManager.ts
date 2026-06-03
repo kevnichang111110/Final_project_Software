@@ -1,16 +1,14 @@
 // BattleManager.ts
-// 從原本 ~760 行的「萬能類別」瘦身成協調者：
-//   - 車輛生成/組裝 → CarBuilder
-//   - 物理關節        → JointFactory（由 CarBuilder 呼叫）
-//   - 子彈發射        → WeaponSystem
-//   - 敵方 AI         → BotAI
-//   - 常數            → core/GameConstants
+// 協調者：車輛生成→CarBuilder、關節→JointFactory、子彈→WeaponSystem、敵方→BotAI、常數→core/GameConstants。
 //
-// ⚠ 所有 @property 欄位、類別名、檔名都保持不變，編輯器上的綁定不受影響。
-// 行為與原版一致（含開場倒數、驟死、勝負判定、金幣發放、場景切換）。
+// 本批次新增（不動任何 @property，記分板用程式生成）：
+//   - 左上/右上記分板（第 1 點）
+//   - 滑鼠瞄準砲開火（第 2 點，配合 MouseCannon 組件）
+//   - 空中左右旋轉（第 5 點，A/D 對核心施扭矩）
+//   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
@@ -54,8 +52,14 @@ export default class BattleManager extends cc.Component {
 
     private moveDir = 0;
     private isAttacking = false;
+    private isBoosting = false;          // 噴射 boost（W / ↑）
     private wheelSpeed = 0;
     private playerGunCooldown = 0;
+
+    // 滑鼠砲
+    private isMouseDown = false;
+    private mouseWorldPos: cc.Vec2 = cc.v2(0, 0);
+    private mouseCannonCooldown = 0;
 
     private playerRoot: cc.Node | null = null;
     private botRoot: cc.Node | null = null;
@@ -64,6 +68,10 @@ export default class BattleManager extends cc.Component {
     private botCar: BuiltCar | null = null;
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
+
+    // 記分板
+    private playerScoreLabel: cc.Label | null = null;
+    private botScoreLabel: cc.Label | null = null;
 
     // ====================================================================
     // 生命週期
@@ -77,15 +85,73 @@ export default class BattleManager extends cc.Component {
         (physics as any).velocityIterations = PHYSICS.VELOCITY_ITERATIONS;
         (physics as any).positionIterations = PHYSICS.POSITION_ITERATIONS;
 
+        this.createScoreboard();
         this.setupBattle();
 
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
+
+        const canvas = cc.find("Canvas");
+        if (canvas) {
+            canvas.on(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this);
+            canvas.on(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this);
+            canvas.on(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this);
+        }
     }
 
     onDestroy() {
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
+
+        const canvas = cc.find("Canvas");
+        if (canvas) {
+            canvas.off(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this);
+            canvas.off(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this);
+            canvas.off(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this);
+        }
+    }
+
+    // ====================================================================
+    // 記分板（第 1 點）：左上玩家、右上敵方，程式生成所以不需編輯器拉
+    // ====================================================================
+    private createScoreboard() {
+        const canvas = cc.find("Canvas");
+        if (!canvas) return;
+        this.playerScoreLabel = this.makeCornerLabel(canvas, "PLAYER_SCORE", true, cc.color(120, 200, 255));
+        this.botScoreLabel = this.makeCornerLabel(canvas, "BOT_SCORE", false, cc.color(255, 150, 90));
+        this.updateScoreboard();
+    }
+
+    private makeCornerLabel(canvas: cc.Node, name: string, left: boolean, color: cc.Color): cc.Label {
+        const node = new cc.Node(name);
+        node.parent = canvas;
+        node.zIndex = 100;
+        node.color = color;
+
+        const label = node.addComponent(cc.Label);
+        label.fontSize = 40;
+        label.lineHeight = 44;
+        label.horizontalAlign = left ? cc.Label.HorizontalAlign.LEFT : cc.Label.HorizontalAlign.RIGHT;
+
+        const widget = node.addComponent(cc.Widget);
+        widget.isAlignTop = true;
+        widget.top = 24;
+        if (left) {
+            widget.isAlignLeft = true;
+            widget.left = 30;
+            node.anchorX = 0;
+        } else {
+            widget.isAlignRight = true;
+            widget.right = 30;
+            node.anchorX = 1;
+        }
+        widget.updateAlignment();
+        return label;
+    }
+
+    private updateScoreboard() {
+        if (this.playerScoreLabel) this.playerScoreLabel.string = `PLAYER  ${GameManager.playerWins}`;
+        if (this.botScoreLabel) this.botScoreLabel.string = `${GameManager.botWins}  BOT`;
     }
 
     // ====================================================================
@@ -99,11 +165,16 @@ export default class BattleManager extends cc.Component {
         this.matchTimer = BATTLE.MATCH_TIME;
         this.moveDir = 0;
         this.isAttacking = false;
+        this.isBoosting = false;
+        this.isMouseDown = false;
         this.wheelSpeed = 0;
         this.playerGunCooldown = 0;
+        this.mouseCannonCooldown = 0;
         this.playerCar = null;
         this.botCar = null;
         this.botAI = null;
+
+        this.updateScoreboard();
 
         if (this.suddenDeathLabel) this.suddenDeathLabel.node.active = false;
         if (this.resultLabel) this.resultLabel.node.active = false;
@@ -158,7 +229,6 @@ export default class BattleManager extends cc.Component {
         this.unschedule(this.spawnSuddenDeathPart);
     }
 
-    // 依目前總回合數決定敵人配置（前期弱、後期強）
     private spawnBotSequence() {
         if (!this.botRoot) return;
         const totalRounds = GameManager.playerWins + GameManager.botWins;
@@ -195,7 +265,6 @@ export default class BattleManager extends cc.Component {
     // 主迴圈
     // ====================================================================
     update(dt: number) {
-        // 暫停時同步音樂狀態
         if (GameManager.isPaused !== this.wasPaused) {
             if (GameManager.isPaused) cc.audioEngine.pauseMusic();
             else cc.audioEngine.resumeMusic();
@@ -210,6 +279,7 @@ export default class BattleManager extends cc.Component {
         }
 
         this.updatePlayerGun(dt);
+        this.updateMouseCannons(dt);
 
         if (this.botAI && this.playerRoot && this.botRoot && this.weapons) {
             this.botAI.update(dt, this.playerRoot, this.botRoot, this.weapons);
@@ -217,6 +287,8 @@ export default class BattleManager extends cc.Component {
 
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
+        this.updateAirRotation();
+        this.updateJet();
         this.updatePlayerMelee();
     }
 
@@ -229,7 +301,7 @@ export default class BattleManager extends cc.Component {
 
         if (this.startCountdownValue === 1) {
             if (this.countdownLabel) this.countdownLabel.string = "1";
-            this.spawnBotSequence();   // 倒數到 1 時才生敵人
+            this.spawnBotSequence();
         } else if (this.startCountdownValue === 0) {
             if (this.countdownLabel) this.countdownLabel.string = "FIGHT!";
             this.isBattleStarted = true;
@@ -257,6 +329,30 @@ export default class BattleManager extends cc.Component {
             }
             this.playerGunCooldown = this.gunFireInterval;
         }
+    }
+
+    // 滑鼠瞄準砲（第 2 點）：按住左鍵朝游標方向連射，子彈無差別傷害
+    private updateMouseCannons(dt: number) {
+        this.mouseCannonCooldown = Math.max(0, this.mouseCannonCooldown - dt);
+        if (!this.playerCar || !this.weapons) return;
+        const cannons = this.playerCar.mouseCannons;
+        if (cannons.length === 0 || !this.isMouseDown || this.mouseCannonCooldown > 0) return;
+
+        let interval = 0.18;
+        for (const node of cannons) {
+            if (!node || !node.isValid) continue;
+            const mc = node.getComponent("MouseCannon") as any;
+            if (mc) interval = mc.fireInterval;
+            this.weapons.fireTowards(node, "PLAYER", this.mouseWorldPos, {
+                speed: mc ? mc.bulletSpeed : undefined,
+                damage: mc ? mc.bulletDamage : undefined,
+                lifetime: mc ? mc.bulletLifetime : undefined,
+                damagesAll: true,
+            });
+            const audio = node.getComponent("PartAudio") as any;
+            if (audio && audio.playAttack) audio.playAttack();
+        }
+        this.mouseCannonCooldown = interval;
     }
 
     private updateMatchTimer(dt: number) {
@@ -287,6 +383,25 @@ export default class BattleManager extends cc.Component {
         for (const j of this.playerCar.wheelJoints) {
             const mul = this.playerCar.wheelMultipliers.get(j) ?? 1;
             j.motorSpeed = this.wheelSpeed * mul;
+        }
+    }
+
+    // 空中左右旋轉（第 5 點）：A/D 對核心施扭矩，角速度有上限避免狂轉。
+    // 地面上輪子與焊接會抵抗大部分扭矩；離地時就能用來翻正/轉體。
+    private updateAirRotation() {
+        if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
+        const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
+        if (!rb) return;
+        if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
+            (rb as any).applyTorque(this.moveDir * AIR.ROTATE_TORQUE, true);
+        }
+    }
+
+    // 噴射輪（第 4 點）：按住 boost 時每幀向上推
+    private updateJet() {
+        if (!this.isBoosting || !this.playerCar) return;
+        for (const ab of this.playerCar.wheelAbilities) {
+            if (ab && ab.applyJet) ab.applyJet();
         }
     }
 
@@ -395,6 +510,8 @@ export default class BattleManager extends cc.Component {
             if (this.defeatSfx) cc.audioEngine.playEffect(this.defeatSfx, false);
         }
 
+        this.updateScoreboard();
+
         if (this.resultLabel) {
             this.resultLabel.node.active = true;
             if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
@@ -413,6 +530,8 @@ export default class BattleManager extends cc.Component {
             if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH || GameManager.botWins >= BATTLE.WINS_TO_FINISH) {
                 GameManager.resetAllData();
                 cc.director.loadScene("Menu");
+            } else if (FLOW.USE_SCRAMBLE) {
+                cc.director.loadScene(FLOW.SCRAMBLE_SCENE);  // 每局結束 → 搶奪階段 → （由它）進商店
             } else {
                 cc.director.loadScene("Shop");
             }
@@ -435,6 +554,10 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.space:
                 this.isAttacking = true;
                 break;
+            case cc.macro.KEY.w:
+            case cc.macro.KEY.up:
+                this.isBoosting = true;   // 噴射 boost
+                break;
         }
     }
 
@@ -451,6 +574,34 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.space:
                 this.isAttacking = false;
                 break;
+            case cc.macro.KEY.w:
+            case cc.macro.KEY.up:
+                this.isBoosting = false;
+                break;
+        }
+    }
+
+    // 滑鼠：把螢幕座標轉成世界座標供瞄準
+    private onMouseMove(e: cc.Event.EventMouse) {
+        const sp = e.getLocation();
+        const cam = cc.Camera.main;
+        if (cam && (cam as any).getScreenToWorldPoint) {
+            this.mouseWorldPos = (cam as any).getScreenToWorldPoint(cc.v2(sp.x, sp.y));
+        } else {
+            this.mouseWorldPos = cc.v2(sp.x, sp.y);
+        }
+    }
+
+    private onMouseDown(e: cc.Event.EventMouse) {
+        if (e.getButton() === cc.Event.EventMouse.BUTTON_LEFT) {
+            this.isMouseDown = true;
+            this.onMouseMove(e);
+        }
+    }
+
+    private onMouseUp(e: cc.Event.EventMouse) {
+        if (e.getButton() === cc.Event.EventMouse.BUTTON_LEFT) {
+            this.isMouseDown = false;
         }
     }
 
