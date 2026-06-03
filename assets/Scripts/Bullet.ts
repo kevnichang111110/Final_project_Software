@@ -1,5 +1,11 @@
+// Bullet.ts
+// 變更：移除原本「import Health」這條未使用的匯入 —— 它與 HealthManager 互相 import
+//       形成循環依賴。子彈對人的傷害本來就由 HealthManager 處理，Bullet 不需要 Health。
+//       分組字串改用 GameConstants 的 GROUP。
+
+import { GROUP } from "./core/GameConstants";
+
 const { ccclass, property } = cc._decorator;
-import Health from "./HealthManager";
 
 @ccclass
 export default class Bullet extends cc.Component {
@@ -18,7 +24,6 @@ export default class Bullet extends cc.Component {
         if (rb) {
             rb.enabledContactListener = true;
         }
-
         this.scheduleOnce(() => {
             this.explode();
         }, this.lifeTime);
@@ -27,9 +32,9 @@ export default class Bullet extends cc.Component {
     onBeginContact(contact: cc.PhysicsContact, self: cc.PhysicsCollider, other: cc.PhysicsCollider) {
         if (this.hasExploded) return;
 
-        // 只有在撞到 default（地板）或邊界時，由子彈自己觸發 explode
-        // 撞到人（Health）的邏輯交給 HealthManager 處理，這樣比較不會有抓不到組件的問題
-        if (other.node.group === "default" || other.node.group === "boundary") {
+        // 撞到地板(default)或邊界(boundary)時自己爆。
+        // 撞到人的扣血邏輯交給 HealthManager 處理。
+        if (other.node.group === GROUP.DEFAULT || other.node.group === GROUP.BOUNDARY) {
             this.explode();
         }
     }

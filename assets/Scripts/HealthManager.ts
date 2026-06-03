@@ -1,7 +1,16 @@
-import { PartType } from "./Slotsetting"; // 1. 務必匯入 PartType
-import Bullet from "./Bullet";             // 2. 務必匯入 Bullet
+// HealthManager.ts  （類別名仍為 Health，檔名不變，編輯器綁定不受影響）
+// 變更：
+//   1. 傷害判定的零件種類改用 PartUtils.isWeaponNode（取代原本散落的 getComponent + PartType 判斷）。
+//   2. 所有傷害數值改用 GameConstants.DAMAGE，分組關鍵字改用 GROUP。
+//   3. 不再 import PartType（已由 isWeaponNode 內部處理）；仍 import Bullet 作型別，
+//      因為 Bullet 已不再 import Health，循環依賴已解除。
+//   行為與原版完全一致。
 
-const {ccclass, property} = cc._decorator;
+import Bullet from "./Bullet";
+import { isWeaponNode } from "./core/PartUtils";
+import { GROUP, DAMAGE } from "./core/GameConstants";
+
+const { ccclass, property } = cc._decorator;
 
 @ccclass
 export default class Health extends cc.Component {
@@ -26,7 +35,7 @@ export default class Health extends cc.Component {
     debugBarOffsetY: number = 0;
 
     private isInvincible: boolean = false;
-    private invincibilityDuration: number = 0.1; // 稍微調低，讓連射子彈有感
+    private invincibilityDuration: number = DAMAGE.INVINCIBILITY;
 
     private hpBarNode: cc.Node | null = null;
     private hpBarGraphics: cc.Graphics | null = null;
@@ -77,38 +86,35 @@ export default class Health extends cc.Component {
     }
 
     onBeginContact(contact: cc.PhysicsContact, selfCollider: cc.PhysicsCollider, otherCollider: cc.PhysicsCollider) {
-        //cc.log(`[碰撞發生] 我方群組: ${this.node.group} | 撞到群組: ${otherCollider.node.group}`);
-        
         if (cc.director.getScene().name === "Shop") return;
         if (this.isInvincible || this.currentHP <= 0) return;
 
-        let myGroup = this.node.group;
-        let otherGroup = otherCollider.node.group;
+        const myGroup = this.node.group;
+        const otherGroup = otherCollider.node.group;
 
-        // --- 修正1：先檢查是不是被子彈打到 ---
-        const bullet = otherCollider.node.getComponent("Bullet") as Bullet; // 使用字串名稱確保穩定
+        // --- 先檢查是不是被子彈打到 ---
+        const bullet = otherCollider.node.getComponent("Bullet") as Bullet;
         if (bullet) {
-            const mySide = this.node.group.includes("PLAYER") ? "PLAYER" : "BOT";
-            
-            // 偵測到是敵方子彈
+            const mySide = myGroup.includes(GROUP.PLAYER_KEY) ? "PLAYER" : "BOT";
+
             if (bullet.ownerSide !== mySide) {
-                //cc.log(`[中彈] ${this.node.name} 被 ${bullet.ownerSide} 的子彈擊中`);
-                let bulletDmg = this.getComponent("Draggable")?.partType === PartType.Weapon ? bullet.damage * 0.5 : bullet.damage;
-                this.takeDamage(bulletDmg);
-                bullet.explode(); // 呼叫子彈爆炸消失
-                return; 
-            } else {
-                // 友軍子彈（剛發射時）：直接讓子彈消失，不扣血
+                // 敵方子彈：武器部件受傷打折
+                const dmg = isWeaponNode(this.node) ? bullet.damage * DAMAGE.BULLET_VS_WEAPON : bullet.damage;
+                this.takeDamage(dmg);
                 bullet.explode();
-                return;
+            } else {
+                // 友軍子彈（剛發射時）：直接消失，不扣血
+                bullet.explode();
             }
+            return;
         }
 
-        // --- 修正2：處理原本的近戰/碰撞傷害 ---
-        // 判斷是否為敵對分組
-        const isPlayer = myGroup.includes("PLAYER");
-        const isBot = otherGroup.includes("BOT");
-        const isOpponent = (isPlayer && isBot) || (myGroup.includes("BOT") && otherGroup.includes("PLAYER"));
+        // --- 近戰／碰撞傷害 ---
+        const isPlayer = myGroup.includes(GROUP.PLAYER_KEY);
+        const isBot = otherGroup.includes(GROUP.BOT_KEY);
+        const isOpponent =
+            (isPlayer && isBot) ||
+            (myGroup.includes(GROUP.BOT_KEY) && otherGroup.includes(GROUP.PLAYER_KEY));
         if (!isOpponent) return;
 
         const worldManifold = contact.getWorldManifold();
@@ -126,43 +132,32 @@ export default class Health extends cc.Component {
 
         const relativeVelocity = v1.sub(v2).mag();
 
-        // 降低門檻，原本 400 可能太高導致近戰揮動沒傷害，改為 200 試試
-        if (relativeVelocity > 200) {
-            let damage = (relativeVelocity - 200) / 10;
+        if (relativeVelocity > DAMAGE.COLLISION_THRESHOLD) {
+            let damage = (relativeVelocity - DAMAGE.COLLISION_THRESHOLD) / DAMAGE.COLLISION_DIVISOR;
 
-            const myDrag = this.getComponent("Draggable") as any;
-            const otherDrag = otherCollider.getComponent("Draggable") as any;
+            const isMeWeapon = isWeaponNode(this.node);
+            const isOtherWeapon = isWeaponNode(otherCollider.node);
 
-            // 修正：改用 Enum 判斷
-            const isMeWeapon = myDrag && myDrag.partType === PartType.Weapon;
-            const isOtherWeapon = otherDrag && otherDrag.partType === PartType.Weapon;
-
-            if (isMeWeapon && isOtherWeapon){
-                damage=damage*0.2
-                if (damage > 0.5) {
-                    this.takeDamage(damage);
-                }
+            if (isMeWeapon && isOtherWeapon) {
+                damage *= DAMAGE.WEAPON_VS_WEAPON;
+                if (damage > DAMAGE.MIN_TO_APPLY) this.takeDamage(damage);
                 return;
             }
 
             if (isMeWeapon) {
-                damage *= 0.05; // 我是武器撞人，我受極小傷
+                damage *= DAMAGE.SELF_WEAPON_MULT;     // 我是武器撞人，受極小傷
             } else if (isOtherWeapon) {
-                damage *= 4.0;  // 別人是武器撞我，我受重傷 (原本3倍改4倍更有感)
+                damage *= DAMAGE.OTHER_WEAPON_MULT;    // 別人用武器撞我，受重傷
             }
 
-            if (damage > 0.5) {
-                this.takeDamage(damage);
-            }
+            if (damage > DAMAGE.MIN_TO_APPLY) this.takeDamage(damage);
         }
     }
 
     takeDamage(dmg: number) {
         if (this.currentHP <= 0 || this.isInvincible) return;
 
-        const maxDamagePerHit = 50; 
-        const finalDmg = Math.min(dmg, maxDamagePerHit);
-
+        const finalDmg = Math.min(dmg, DAMAGE.MAX_PER_HIT);
         this.currentHP -= finalDmg;
         this.updateDebugHPBar();
 

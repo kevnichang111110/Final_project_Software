@@ -1,12 +1,19 @@
-import { PartType } from "./Slotsetting";
+// Draggable.ts
+// 變更：
+//   1. WeaponMode 移到 core/PartType 統一管理；這裡 import 後再 re-export，
+//      讓任何「from "./Draggable" import { WeaponMode }」的舊程式仍可運作。
+//   2. PartType 改從 core/PartType 匯入（原本從 ./Slotsetting，Slotsetting 現在也是 re-export）。
+//   3. 網格相關數字改用 GameConstants.GRID。
+//   拖曳/吸附行為與原版一致。
 
-const {ccclass, property} = cc._decorator;
+import { PartType, WeaponMode } from "./core/PartType";
+import { GRID } from "./core/GameConstants";
+import { cleanName } from "./core/PartUtils";
 
-export enum WeaponMode {
-    Melee = 0,
-    Gun = 1
-}
-cc.Enum(WeaponMode); 
+export { WeaponMode };
+
+const { ccclass, property } = cc._decorator;
+
 @ccclass
 export default class Draggable extends cc.Component {
     private rb: cc.RigidBody | null = null;
@@ -15,21 +22,22 @@ export default class Draggable extends cc.Component {
     private lastValidPos: cc.Vec2 = cc.v2(0, 0);
 
     @property({ type: cc.Enum(PartType) })
-    partType = PartType.Wheel; 
+    partType = PartType.Wheel;
+
     @property
-    wheelMotorMultiplier: number = 1;  
+    wheelMotorMultiplier: number = 1;
 
     @property({ type: cc.Enum(WeaponMode) })
     weaponMode: WeaponMode = WeaponMode.Melee;
 
     onLoad() {
         if (cc.director.getScene().name === "game") {
-            this.enabled = false; 
+            this.enabled = false;
             return;
         }
 
         this.rb = this.getComponent(cc.RigidBody);
-        this.assemblyArea = cc.find("Canvas/Assemblyarea"); 
+        this.assemblyArea = cc.find("Canvas/Assemblyarea");
         this.partsLayer = cc.find("Canvas/Assemblyarea/PartLayer");
 
         this.node.on(cc.Node.EventType.TOUCH_START, this.onDragStart, this);
@@ -39,8 +47,7 @@ export default class Draggable extends cc.Component {
     }
 
     private isCorePart(): boolean {
-        const cleanName = this.node.name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
-        return this.partType === PartType.Core || cleanName === "core";
+        return this.partType === PartType.Core || cleanName(this.node.name) === "core";
     }
 
     onDragStart() {
@@ -48,7 +55,7 @@ export default class Draggable extends cc.Component {
         this.lastValidPos = this.node.getPosition();
 
         if (this.node.parent !== cc.find("Canvas")) {
-            let worldPos = this.node.convertToWorldSpaceAR(cc.v2(0,0));
+            let worldPos = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
             this.node.parent = cc.find("Canvas");
             this.node.setPosition(this.node.parent.convertToNodeSpaceAR(worldPos));
         }
@@ -56,21 +63,19 @@ export default class Draggable extends cc.Component {
         if (this.rb) {
             this.rb.type = cc.RigidBodyType.Static;
             let collider = this.getComponent(cc.PhysicsCollider);
-            if (collider) collider.enabled = true; 
+            if (collider) collider.enabled = true;
         }
-        
+
         this.node.setSiblingIndex(this.node.parent.childrenCount - 1);
     }
 
     onDragMove(event: cc.Event.EventTouch) {
-
         let delta = event.getDelta();
         this.node.x += delta.x;
         this.node.y += delta.y;
     }
 
     onDragEnd() {
-  
         if (!this.assemblyArea || !this.partsLayer) {
             this.handleFailedDrop();
             return;
@@ -79,11 +84,11 @@ export default class Draggable extends cc.Component {
         let worldPos = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
         let localPos = this.assemblyArea.convertToNodeSpaceAR(worldPos);
 
-        // 檢查是否在 5x5 網格範圍內 (0~200)
-        if (localPos.x >= 0 && localPos.x <= 200 && localPos.y >= 0 && localPos.y <= 200) {
-            
-            let gridX = Math.floor(localPos.x / 40);
-            let gridY = Math.floor(localPos.y / 40);
+        // 檢查是否在 5x5 網格範圍內 (0 ~ AREA_MAX)
+        if (localPos.x >= 0 && localPos.x <= GRID.AREA_MAX && localPos.y >= 0 && localPos.y <= GRID.AREA_MAX) {
+
+            let gridX = Math.floor(localPos.x / GRID.CELL_SIZE);
+            let gridY = Math.floor(localPos.y / GRID.CELL_SIZE);
 
             // 檢查該格子是否已有東西
             if (this.isGridOccupied(gridX, gridY)) {
@@ -92,16 +97,15 @@ export default class Draggable extends cc.Component {
             }
 
             // 吸附成功
-            let snappedX = gridX * 40 + 20;
-            let snappedY = gridY * 40 + 20;
+            let snappedX = gridX * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
+            let snappedY = gridY * GRID.CELL_SIZE + GRID.SNAP_OFFSET;
 
-            this.node.parent = this.partsLayer; 
+            this.node.parent = this.partsLayer;
             this.node.setPosition(snappedX, snappedY);
             this.node.angle = 0;
-            
+
             if (this.rb) this.rb.type = cc.RigidBodyType.Static;
         } else {
-            // 在區外
             this.handleFailedDrop();
         }
     }
@@ -109,16 +113,13 @@ export default class Draggable extends cc.Component {
     // 統一處理失敗的放置
     private handleFailedDrop() {
         if (this.isCorePart()) {
-            // 核心強制彈回原位
-            this.returnToLastValidPos();
+            this.returnToLastValidPos();   // 核心強制彈回
         } else {
-            // 一般部件掉落
-            this.resetPhysics();
+            this.resetPhysics();           // 一般部件掉落
         }
     }
 
     private returnToLastValidPos() {
-        // --- 修正：先檢查 partsLayer 是否存在，解決 Type 'Node | null' 報錯 ---
         if (this.partsLayer) {
             this.node.parent = this.partsLayer;
             this.node.setPosition(this.lastValidPos);
@@ -136,13 +137,12 @@ export default class Draggable extends cc.Component {
     }
 
     isGridOccupied(gx: number, gy: number): boolean {
-        // --- 修正：解決 Object is possibly 'null' 報錯 ---
         if (!this.partsLayer) return false;
 
         for (let p of this.partsLayer.children) {
             if (p === this.node) continue;
-            let pgx = Math.floor(p.x / 40);
-            let pgy = Math.floor(p.y / 40);
+            let pgx = Math.floor(p.x / GRID.CELL_SIZE);
+            let pgy = Math.floor(p.y / GRID.CELL_SIZE);
             if (pgx === gx && pgy === gy) return true;
         }
         return false;

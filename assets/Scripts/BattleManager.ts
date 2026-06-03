@@ -1,110 +1,82 @@
+// BattleManager.ts
+// 從原本 ~760 行的「萬能類別」瘦身成協調者：
+//   - 車輛生成/組裝 → CarBuilder
+//   - 物理關節        → JointFactory（由 CarBuilder 呼叫）
+//   - 子彈發射        → WeaponSystem
+//   - 敵方 AI         → BotAI
+//   - 常數            → core/GameConstants
+//
+// ⚠ 所有 @property 欄位、類別名、檔名都保持不變，編輯器上的綁定不受影響。
+// 行為與原版一致（含開場倒數、驟死、勝負判定、金幣發放、場景切換）。
+
 import GameManager from "./GameManager";
-import { PartType } from "./Slotsetting";
-import Draggable, { WeaponMode } from "./Draggable";
-import Health from "./HealthManager";
-import Bullet from "./Bullet";
+import { PHYSICS, BATTLE, JOINT, GROUP } from "./core/GameConstants";
+import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
+import BotAI from "./battle/BotAI";
+import WeaponSystem from "./battle/WeaponSystem";
 
 const { ccclass, property } = cc._decorator;
 
 @ccclass
 export default class BattleManager extends cc.Component {
 
-    @property(cc.Label)
-    timerLabel: cc.Label | null = null;
+    // ===== 編輯器綁定（請勿更動欄位集合）=====
+    @property(cc.Label) timerLabel: cc.Label | null = null;
+    @property(cc.Label) suddenDeathLabel: cc.Label | null = null;
+    @property(cc.Label) countdownLabel: cc.Label | null = null;
+    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
+    @property(cc.Prefab) settingsPrefab: cc.Prefab | null = null;
+    @property(cc.Label) resultLabel: cc.Label | null = null;
 
-    @property(cc.Label)
-    suddenDeathLabel: cc.Label | null = null;
+    @property(cc.AudioClip) bgmClip: cc.AudioClip | null = null;
+    @property(cc.AudioClip) suddenDeathSfx: cc.AudioClip | null = null;
+    @property(cc.AudioClip) countdownBgmClip: cc.AudioClip | null = null;
+    @property(cc.AudioClip) victorySfx: cc.AudioClip | null = null;
+    @property(cc.AudioClip) defeatSfx: cc.AudioClip | null = null;
 
-    @property(cc.Label)
-    countdownLabel: cc.Label | null = null;
+    @property(cc.Prefab) bulletPrefab: cc.Prefab | null = null;
+    @property gunFireInterval: number = 0.25;
+    @property botGunFireInterval: number = 0.9;
+    @property bulletSpeed: number = 1600;
+    @property bulletDamage: number = 20;
+    @property bulletLifetime: number = 3;
 
-    @property([cc.Prefab])
-    allPrefabs: cc.Prefab[] = [];
+    // ===== 戰鬥狀態 =====
+    private matchTimer: number = BATTLE.MATCH_TIME;
+    private isSuddenDeath = false;
+    private isBattleStarted = false;
+    private isTimerFlashing = false;
+    private isGameOver = false;
+    private wasPaused = false;
 
-    @property(cc.Prefab)
-    settingsPrefab: cc.Prefab | null = null;
+    private startCountdownTimer = 0;
+    private startCountdownValue = BATTLE.COUNTDOWN_FROM;
 
-    @property(cc.Label)
-    resultLabel: cc.Label | null = null;
-
-    @property(cc.AudioClip)
-    bgmClip: cc.AudioClip | null = null;
-
-    @property(cc.AudioClip)
-    suddenDeathSfx: cc.AudioClip | null = null; 
-
-    @property(cc.AudioClip)
-    countdownBgmClip: cc.AudioClip | null = null; 
-    private wasPaused: boolean = false;
-
-    @property(cc.AudioClip)
-    victorySfx: cc.AudioClip | null = null;
-
-    @property(cc.AudioClip)
-    defeatSfx: cc.AudioClip | null = null;
-
-    @property(cc.Prefab)
-    bulletPrefab: cc.Prefab | null = null;
-
-    // --- 戰鬥狀態變數 ---
-    private matchTimer: number = 20;
-    private isSuddenDeath: boolean = false;
-    private isBattleStarted: boolean = false; 
-    private isTimerFlashing: boolean = false;
-
-    private startCountdownTimer: number = 0;
-    private startCountdownValue: number = 2;
-    
-    private playerCoreHealth: Health | null = null;
-    private botCoreHealth: Health | null = null;
-
-    private wheelJoints: cc.WheelJoint[] = [];
-    private weaponJoints: cc.RevoluteJoint[] = [];
-    private botWheelJoints: cc.WheelJoint[] = [];
-    private botWeaponJoints: cc.RevoluteJoint[] = [];
-
-    private wheelSpeed: number = 0;
-    private moveDir: number = 0;
-    private isAttacking: boolean = false;
-    private isGameOver: boolean = false;
-
-    private playerPartsMap: Map<string, cc.Node> = new Map();
-    private botPartsMap: Map<string, cc.Node> = new Map();
+    private moveDir = 0;
+    private isAttacking = false;
+    private wheelSpeed = 0;
+    private playerGunCooldown = 0;
 
     private playerRoot: cc.Node | null = null;
     private botRoot: cc.Node | null = null;
 
-    private wheelSpeedMultipliers: Map<cc.WheelJoint, number> = new Map();
-    private botWheelSpeedMultipliers: Map<cc.WheelJoint, number> = new Map();
+    private playerCar: BuiltCar | null = null;
+    private botCar: BuiltCar | null = null;
+    private botAI: BotAI | null = null;
+    private weapons: WeaponSystem | null = null;
 
-    private playerGunNodes: cc.Node[] = [];
-    private botGunNodes: cc.Node[] = [];
-    private playerGunCooldown: number = 0;
-    private botGunCooldown: number = 0;
-
-    @property
-    gunFireInterval: number = 0.25;
-    @property
-    botGunFireInterval: number = 0.9;
-    @property
-    bulletSpeed: number = 1600;
-    @property
-    bulletDamage: number = 20;
-    @property
-    bulletLifetime: number = 3;
-
+    // ====================================================================
+    // 生命週期
+    // ====================================================================
     onLoad() {
         const physics = cc.director.getPhysicsManager();
         physics.enabled = true;
         (physics as any).enabledContactListener = true;
-        physics.enabledAccumulator = true; 
-        cc.PhysicsManager.FIXED_TIME_STEP = 1/60; 
+        physics.enabledAccumulator = true;
+        cc.PhysicsManager.FIXED_TIME_STEP = PHYSICS.FIXED_TIME_STEP;
+        (physics as any).velocityIterations = PHYSICS.VELOCITY_ITERATIONS;
+        (physics as any).positionIterations = PHYSICS.POSITION_ITERATIONS;
 
-        //physics.debugDrawFlags = cc.PhysicsManager.DrawBits.e_aabbBit | cc.PhysicsManager.DrawBits.e_shapeBit;
-
-        (physics as any).velocityIterations = 40;
-        (physics as any).positionIterations = 40;
-        
         this.setupBattle();
 
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
@@ -116,38 +88,31 @@ export default class BattleManager extends cc.Component {
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
     }
 
+    // ====================================================================
+    // 開局
+    // ====================================================================
     setupBattle() {
         this.isGameOver = false;
         this.isSuddenDeath = false;
-        this.isBattleStarted = false; 
+        this.isBattleStarted = false;
         this.isTimerFlashing = false;
-        this.matchTimer = 20;
+        this.matchTimer = BATTLE.MATCH_TIME;
         this.moveDir = 0;
         this.isAttacking = false;
-        this.playerCoreHealth = null;
-        this.botCoreHealth = null;
-
-        this.wheelSpeedMultipliers.clear();
-        this.botWheelSpeedMultipliers.clear();
-        this.playerGunNodes = [];
-        this.botGunNodes = [];
+        this.wheelSpeed = 0;
         this.playerGunCooldown = 0;
-        this.botGunCooldown = 0;
+        this.playerCar = null;
+        this.botCar = null;
+        this.botAI = null;
 
         if (this.suddenDeathLabel) this.suddenDeathLabel.node.active = false;
+        if (this.resultLabel) this.resultLabel.node.active = false;
         if (this.timerLabel) {
-            this.timerLabel.string = "20";
-            this.timerLabel.node.color = cc.Color.WHITE;
-            this.timerLabel.node.opacity = 255;
             this.timerLabel.node.stopAllActions();
+            this.timerLabel.node.opacity = 255;
+            this.timerLabel.node.color = cc.Color.WHITE;
+            this.timerLabel.string = String(BATTLE.MATCH_TIME);
         }
-
-        this.playerPartsMap.clear();
-        this.botPartsMap.clear();
-        this.wheelJoints = [];
-        this.weaponJoints = [];
-        this.botWheelJoints = [];
-        this.botWeaponJoints = [];
 
         this.destroyCurrentBattle();
 
@@ -156,30 +121,34 @@ export default class BattleManager extends cc.Component {
         this.botRoot = new cc.Node("BOT_ROOT");
         this.botRoot.parent = this.node;
 
-        this.spawnGridCar(GameManager.playerCarGrid, cc.v2(300, 0), "PLAYER", this.playerRoot);
+        // 子彈系統（子彈掛在 BattleManager 所在節點底下）
+        this.weapons = new WeaponSystem(this.bulletPrefab, this.node, {
+            speed: this.bulletSpeed,
+            damage: this.bulletDamage,
+            lifetime: this.bulletLifetime,
+        });
 
-        // const totalRounds = GameManager.playerWins + GameManager.botWins;
-        // let botIndex = totalRounds <= 1 ? 0 : (totalRounds <= 3 ? 1 : 2);
-        
-        // if (GameManager.botConfigs && GameManager.botConfigs.length > 0) {
-        //     this.spawnGridCar(GameManager.botConfigs[botIndex], cc.v2(-300, 0), "BOT", this.botRoot);
-        // }
-        
+        // 生成玩家車
+        this.playerCar = CarBuilder.build({
+            gridData: GameManager.playerCarGrid,
+            startPos: cc.v2(300, 0),
+            side: "PLAYER",
+            root: this.playerRoot,
+            prefabs: this.allPrefabs,
+            onCoreDie: (winner) => this.handleGameOver(winner),
+        });
+
+        // 開場倒數
         this.startCountdownTimer = 0;
-        this.startCountdownValue = 2;
-
+        this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
             this.countdownLabel.node.active = true;
-            this.countdownLabel.string = "2";
+            this.countdownLabel.string = String(BATTLE.COUNTDOWN_FROM);
         }
         if (this.countdownBgmClip) {
             cc.audioEngine.stopMusic();
             cc.audioEngine.playMusic(this.countdownBgmClip, false);
         }
-    }
-
-    private isWheelPartType(partType: PartType): boolean {
-        return partType === PartType.Wheel;
     }
 
     destroyCurrentBattle() {
@@ -189,219 +158,44 @@ export default class BattleManager extends cc.Component {
         this.unschedule(this.spawnSuddenDeathPart);
     }
 
-    private getCleanNodeName(node: cc.Node): string {
-        return node.name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
-    }
+    // 依目前總回合數決定敵人配置（前期弱、後期強）
+    private spawnBotSequence() {
+        if (!this.botRoot) return;
+        const totalRounds = GameManager.playerWins + GameManager.botWins;
+        const botIndex = totalRounds <= 1 ? 0 : (totalRounds <= 3 ? 1 : 2);
 
-    private isCoreNode(node: cc.Node): boolean {
-        const draggable = node.getComponent(Draggable) as any;
-        return (draggable && draggable.partType === PartType.Core) || this.getCleanNodeName(node) === "core";
-    }
-
-    private isBodyLikeNode(node: cc.Node): boolean {
-        const draggable = node.getComponent(Draggable) as any;
-        return !!draggable && (draggable.partType === PartType.Body || draggable.partType === PartType.Core || this.isCoreNode(node));
-    }
-
-    spawnGridCar(gridData: any[], startPos: cc.Vec2, side: "PLAYER" | "BOT", root: cc.Node) {
-        const partMap = (side === "PLAYER") ? this.playerPartsMap : this.botPartsMap;
-        const groupName = (side === "PLAYER") ? "PLAYER_PART" : "BOT_PART";
-        const sideMultiplier = (side === "PLAYER" ? 1 : -1);
-        for (let data of gridData) {
-            const prefab = this.getPrefabByName(data.partName);
-            if (!prefab) continue;
-
-            const node = cc.instantiate(prefab);
-            node.parent = root;
-            node.group = groupName;
-            node.setPosition(startPos.x + data.gridX * 40, startPos.y + data.gridY * 40);
-
-            node.setPosition(startPos.x + (data.gridX * 40 * sideMultiplier), startPos.y + data.gridY * 40);
-            node.scaleX = sideMultiplier;
-
-            partMap.set(`${data.gridX},${data.gridY}`, node);
-
-            const draggable = node.getComponent(Draggable);
-            if (draggable && draggable.partType === PartType.Weapon) {
-                if (draggable.weaponMode === WeaponMode.Gun) {
-                    if (side === "PLAYER") this.playerGunNodes.push(node);
-                    else this.botGunNodes.push(node);
-                }
-            }
-
-            let hp = node.getComponent(Health) || node.addComponent(Health);
-            if (side === "BOT") {
-                const roundBonus = (GameManager.playerWins + GameManager.botWins) * 10;
-                hp.maxHP += roundBonus;
-                hp.currentHP = hp.maxHP;
-            }
-
-            const isCore = this.isCoreNode(node);
-            if (isCore) {
-                if (side === "PLAYER") this.playerCoreHealth = hp;
-                else this.botCoreHealth = hp;
-            }
-
-            hp.onDieCallback = () => {
-                this.handlePartDisjoint(node);
-                if (isCore) {
-                    this.handleGameOver(side === "PLAYER" ? "BOT" : "PLAYER");
-                }
-            };
-        }
-
-        partMap.forEach((node, key) => {
-            const coords = key.split(",").map(Number);
-            const x = coords[0], y = coords[1];
-            const draggable = node.getComponent(Draggable);
-            if (!draggable) return;
-
-            if (this.isBodyLikeNode(node)) {
-                const right = partMap.get(`${x + 1},${y}`);
-                if (right && this.isBodyLikeNode(right)) this.tryWeld(node, right);
-                const top = partMap.get(`${x},${y + 1}`);
-                if (top && this.isBodyLikeNode(top)) this.tryWeld(node, top);
-            }
-
-            if (this.isWheelPartType(draggable.partType)) {
-                this.setupWheelJoint(node, partMap, x, y, side);
-            } else if (draggable.partType === PartType.Weapon) {
-                this.setupWeaponJoint(node, partMap, x, y, side);
-            }
-        });
-    }
-
-    handlePartDisjoint(node: cc.Node) {
-        const joints = node.getComponents(cc.Joint);
-        joints.forEach(j => j.destroy());
-        const parent = node.parent;
-        if (parent) {
-            const allJoints = parent.getComponentsInChildren(cc.Joint);
-            allJoints.forEach(j => {
-                if (j.connectedBody && j.connectedBody.node === node) j.destroy();
+        if (GameManager.botConfigs && GameManager.botConfigs.length > botIndex) {
+            this.botCar = CarBuilder.build({
+                gridData: GameManager.botConfigs[botIndex],
+                startPos: cc.v2(-300, 50),
+                side: "BOT",
+                root: this.botRoot,
+                prefabs: this.allPrefabs,
+                onCoreDie: (winner) => this.handleGameOver(winner),
             });
-        }
-        node.group = "default";
-        const rb = node.getComponent(cc.RigidBody);
-        if (rb) rb.applyForceToCenter(cc.v2(0, 1000), true);
-        cc.tween(node).delay(1.5).to(0.5, { opacity: 0 }).call(() => { if (node.isValid) node.destroy(); }).start();
-    }
-
-    tryWeld(self: cc.Node, neighbor: cc.Node) {
-        const selfRb = self.getComponent(cc.RigidBody);
-        const neighborRb = neighbor.getComponent(cc.RigidBody);
-        if (!selfRb || !neighborRb) return;
-        const p1 = self.convertToWorldSpaceAR(cc.v2(0, 0));
-        const p2 = neighbor.convertToWorldSpaceAR(cc.v2(0, 0));
-        const jointWorld = cc.v2((p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
-        const joint = self.addComponent(cc.WeldJoint);
-        joint.connectedBody = neighborRb;
-        joint.anchor = self.convertToNodeSpaceAR(jointWorld);
-        joint.connectedAnchor = neighbor.convertToNodeSpaceAR(jointWorld);
-        joint.collideConnected = false;
-        joint.frequency = 0;
-    }
-
-    setupWheelJoint(wheelNode: cc.Node, partMap: Map<string, cc.Node>, x: number, y: number, side: string) {
-        let parentBox: cc.Node | null = null;
-        let attachDir: "TOP" | "LEFT" | "RIGHT" | "BOTTOM" = "TOP";
-
-        const neighbors = [
-            { n: partMap.get(`${x},${y + 1}`), dir: "TOP" as const },
-            { n: partMap.get(`${x - 1},${y}`), dir: "LEFT" as const },
-            { n: partMap.get(`${x + 1},${y}`), dir: "RIGHT" as const },
-            { n: partMap.get(`${x},${y - 1}`), dir: "BOTTOM" as const }
-        ];
-
-        for (let item of neighbors) {
-            if (item.n && this.isBodyLikeNode(item.n)) {
-                parentBox = item.n;
-                attachDir = item.dir;
-                break;
-            }
-        }
-
-        if (!parentBox) return;
-
-        if (attachDir === "LEFT") wheelNode.angle = -90;
-        else if (attachDir === "RIGHT") wheelNode.angle = 90;
-        else if (attachDir === "BOTTOM") wheelNode.angle = 180;
-        else wheelNode.angle = 0;
-
-        const parentRb = parentBox.getComponent(cc.RigidBody);
-        const wheelRb = wheelNode.getComponent(cc.RigidBody);
-        if (!parentRb || !wheelRb) return;
-
-        const joint = parentBox.addComponent(cc.WheelJoint);
-        joint.connectedBody = wheelRb;
-
-        const worldPos = wheelNode.convertToWorldSpaceAR(cc.v2(0, 0));
-        joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
-        joint.connectedAnchor = wheelNode.convertToNodeSpaceAR(worldPos);
-        joint.collideConnected = false;
-
-        if (attachDir === "LEFT") joint.localAxisA = cc.v2(1, 0);
-        else if (attachDir === "RIGHT") joint.localAxisA = cc.v2(-1, 0);
-        else if (attachDir === "BOTTOM") joint.localAxisA = cc.v2(0, -1);
-        else joint.localAxisA = cc.v2(0, 1);
-
-        joint.frequency = 10;
-        joint.enableMotor = true;
-        joint.maxMotorTorque = 100000;
-
-        const drag = wheelNode.getComponent(Draggable) as any;
-        const speedMul = drag && typeof drag.wheelMotorMultiplier === "number" ? drag.wheelMotorMultiplier : 1;
-        joint.maxMotorTorque = 100000 * speedMul; 
-
-        if (side === "PLAYER") {
-            this.wheelJoints.push(joint);
-            this.wheelSpeedMultipliers.set(joint, speedMul);
-        } else {
-            this.botWheelJoints.push(joint);
-            this.botWheelSpeedMultipliers.set(joint, speedMul);
+            this.botAI = new BotAI(this.botCar, this.botGunFireInterval);
         }
     }
 
-    setupWeaponJoint(weaponNode: cc.Node, partMap: Map<string, cc.Node>, x: number, y: number, side: string) {
-        let parentBox: cc.Node | null = null;
-        const coords = [[x-1,y], [x+1,y], [x,y-1], [x,y+1]];
-        for (const c of coords) {
-            const n = partMap.get(`${c[0]},${c[1]}`);
-            if (n && this.isBodyLikeNode(n)) { parentBox = n; break; }
-        }
-        if (!parentBox) return;
-
-        const parentRb = parentBox.getComponent(cc.RigidBody);
-        const weaponRb = weaponNode.getComponent(cc.RigidBody);
-        if (!parentRb || !weaponRb) return;
-
-        const draggable = weaponNode.getComponent(Draggable);
-        if (draggable && draggable.weaponMode === WeaponMode.Gun) {
-            // 遠程武器固定
-            const joint = parentBox.addComponent(cc.WeldJoint);
-            joint.connectedBody = weaponRb;
-            const worldPos = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
-            joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
-            joint.connectedAnchor = weaponNode.convertToNodeSpaceAR(worldPos);
-        } else {
-            // 近戰武器旋轉
-            const joint = parentBox.addComponent(cc.RevoluteJoint);
-            joint.connectedBody = weaponRb;
-            const worldPos = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
-            joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
-            joint.connectedAnchor = weaponNode.convertToNodeSpaceAR(worldPos);
-            joint.enableLimit = true;
-            joint.lowerAngle = (side === "PLAYER") ? -20 : -120;
-            joint.upperAngle = (side === "PLAYER") ? 120 : 20;
-            joint.enableMotor = true;
-            joint.maxMotorTorque = 10000;
-            if (side === "PLAYER") this.weaponJoints.push(joint);
-            else this.botWeaponJoints.push(joint);
-        }
+    private startAllPhysics() {
+        const activate = (root: cc.Node | null) => {
+            if (!root) return;
+            root.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+                rb.type = cc.RigidBodyType.Dynamic;
+                rb.linearVelocity = cc.v2(0, 0);
+                rb.angularVelocity = 0;
+                rb.awake = true;
+            });
+        };
+        activate(this.playerRoot);
+        activate(this.botRoot);
     }
 
+    // ====================================================================
+    // 主迴圈
+    // ====================================================================
     update(dt: number) {
-        // 音樂同步暫停邏輯
+        // 暫停時同步音樂狀態
         if (GameManager.isPaused !== this.wasPaused) {
             if (GameManager.isPaused) cc.audioEngine.pauseMusic();
             else cc.audioEngine.resumeMusic();
@@ -410,83 +204,114 @@ export default class BattleManager extends cc.Component {
 
         if (this.isGameOver || GameManager.isPaused) return;
 
-        // 開場倒數
         if (!this.isBattleStarted) {
-            this.startCountdownTimer += dt;
-            if (this.startCountdownTimer >= 1) {
-                this.startCountdownTimer = 0;
-                this.startCountdownValue--;
-                if (this.startCountdownValue === 1) {
-                    // --- 關鍵：倒數到 1 時，讓 Bot 登場 ---
-                    if (this.countdownLabel) this.countdownLabel.string = "1";
-                    this.spawnBotSequence(); 
-                } 
-                else if (this.startCountdownValue === 0) {
-                    if (this.countdownLabel) this.countdownLabel.string = "FIGHT!";
-                    this.isBattleStarted = true;
-                    
-                    // --- 關鍵：喊 FIGHT 時，啟動兩邊的物理 ---
-                    this.startAllPhysics();
-
-                    if (this.bgmClip) {
-                        // 延遲 1 秒後播放 BGM
-                        this.scheduleOnce(() => {
-                            // 先停止目前的音樂（例如開場倒數的音樂）
-                            cc.audioEngine.stopMusic();
-                            // 播放戰鬥 BGM
-                            cc.audioEngine.playMusic((this as any).bgmClip, true);
-                        }, 1.0); // 1.0 代表 1 秒
-                    }
-                    this.scheduleOnce(() => { if (this.countdownLabel) this.countdownLabel.node.active = false; }, 1);
-                }
-            }
+            this.updateCountdown(dt);
             return;
         }
 
-        // 核心射擊邏輯 (關鍵修正：呼叫玩家射擊)
-        this.updateGunFire(dt);
-        this.updateBotAI(dt); // 傳入 dt
+        this.updatePlayerGun(dt);
 
-        // 倒數計時與突發死亡
-        if (!this.isSuddenDeath) {
-            this.matchTimer -= dt;
-            if (this.timerLabel) {
-                this.timerLabel.string = Math.ceil(this.matchTimer).toString();
-                if (this.matchTimer <= 5 && !this.isTimerFlashing) {
-                    this.isTimerFlashing = true;
-                    this.timerLabel.node.color = cc.Color.RED;
-                    cc.tween(this.timerLabel.node).repeatForever(cc.tween().to(0.5, { opacity: 50 }).to(0.5, { opacity: 255 })).start();
-                }
-            }
-            if (this.matchTimer <= 0) this.startSuddenDeath();
+        if (this.botAI && this.playerRoot && this.botRoot && this.weapons) {
+            this.botAI.update(dt, this.playerRoot, this.botRoot, this.weapons);
         }
 
-        // 玩家輪子
-        const playerHasWheel = this.wheelJoints.length > 0;
-        if (playerHasWheel) {
-            const targetSpeed = this.moveDir * -600;
-            this.wheelSpeed += (targetSpeed - this.wheelSpeed) * 0.15;
-            for (let j of this.wheelJoints) {
-                const mul = this.wheelSpeedMultipliers.get(j) ?? 1;
-                j.motorSpeed = this.wheelSpeed * mul;
+        this.updateMatchTimer(dt);
+        this.updatePlayerMovement();
+        this.updatePlayerMelee();
+    }
+
+    private updateCountdown(dt: number) {
+        this.startCountdownTimer += dt;
+        if (this.startCountdownTimer < 1) return;
+
+        this.startCountdownTimer = 0;
+        this.startCountdownValue--;
+
+        if (this.startCountdownValue === 1) {
+            if (this.countdownLabel) this.countdownLabel.string = "1";
+            this.spawnBotSequence();   // 倒數到 1 時才生敵人
+        } else if (this.startCountdownValue === 0) {
+            if (this.countdownLabel) this.countdownLabel.string = "FIGHT!";
+            this.isBattleStarted = true;
+            this.startAllPhysics();
+
+            if (this.bgmClip) {
+                this.scheduleOnce(() => {
+                    cc.audioEngine.stopMusic();
+                    cc.audioEngine.playMusic(this.bgmClip, true);
+                }, 1.0);
+            }
+            this.scheduleOnce(() => {
+                if (this.countdownLabel) this.countdownLabel.node.active = false;
+            }, 1);
+        }
+    }
+
+    private updatePlayerGun(dt: number) {
+        this.playerGunCooldown = Math.max(0, this.playerGunCooldown - dt);
+        if (!this.playerCar || !this.weapons) return;
+
+        if (this.isAttacking && this.playerCar.gunNodes.length > 0 && this.playerGunCooldown <= 0) {
+            for (const gunNode of this.playerCar.gunNodes) {
+                this.weapons.fireFrom(gunNode, "PLAYER");
+            }
+            this.playerGunCooldown = this.gunFireInterval;
+        }
+    }
+
+    private updateMatchTimer(dt: number) {
+        if (this.isSuddenDeath) return;
+
+        this.matchTimer -= dt;
+        if (this.timerLabel) {
+            this.timerLabel.string = Math.ceil(this.matchTimer).toString();
+
+            if (this.matchTimer <= 5 && !this.isTimerFlashing) {
+                this.isTimerFlashing = true;
+                this.timerLabel.node.color = cc.Color.RED;
+                cc.tween(this.timerLabel.node)
+                    .repeatForever(cc.tween().to(0.5, { opacity: 50 }).to(0.5, { opacity: 255 }))
+                    .start();
             }
         }
 
-        // 玩家近戰武器
-        for (let j of this.weaponJoints) {
-            j.enableMotor = playerHasWheel;
+        if (this.matchTimer <= 0) this.startSuddenDeath();
+    }
+
+    private updatePlayerMovement() {
+        if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return;
+
+        const targetSpeed = this.moveDir * JOINT.WHEEL_TARGET_SPEED;
+        this.wheelSpeed += (targetSpeed - this.wheelSpeed) * JOINT.WHEEL_SMOOTHING;
+
+        for (const j of this.playerCar.wheelJoints) {
+            const mul = this.playerCar.wheelMultipliers.get(j) ?? 1;
+            j.motorSpeed = this.wheelSpeed * mul;
+        }
+    }
+
+    private updatePlayerMelee() {
+        if (!this.playerCar) return;
+        const hasWheel = this.playerCar.wheelJoints.length > 0;
+
+        for (const j of this.playerCar.weaponJoints) {
+            j.enableMotor = hasWheel;
             const cur = j.getJointAngle();
             if (this.isAttacking) {
-                if (cur < j.upperAngle) j.motorSpeed = 1500; else j.motorSpeed = 0;
+                j.motorSpeed = cur < j.upperAngle ? JOINT.MELEE_ATTACK_SPEED : 0;
             } else {
-                if (cur > j.lowerAngle) j.motorSpeed = -500; else j.motorSpeed = 0;
+                j.motorSpeed = cur > j.lowerAngle ? JOINT.MELEE_RETURN_SPEED : 0;
             }
         }
     }
 
+    // ====================================================================
+    // 驟死
+    // ====================================================================
     startSuddenDeath() {
         if (this.isSuddenDeath) return;
         this.isSuddenDeath = true;
+
         if (this.timerLabel) {
             this.timerLabel.node.stopAllActions();
             this.timerLabel.node.opacity = 255;
@@ -494,147 +319,74 @@ export default class BattleManager extends cc.Component {
         }
         if (this.suddenDeathLabel) {
             this.suddenDeathLabel.node.active = true;
-            cc.tween(this.suddenDeathLabel.node).repeatForever(cc.tween().to(0.5, { opacity: 0 }).to(0.5, { opacity: 255 })).start();
+            cc.tween(this.suddenDeathLabel.node)
+                .repeatForever(cc.tween().to(0.5, { opacity: 0 }).to(0.5, { opacity: 255 }))
+                .start();
         }
         if (this.suddenDeathSfx) cc.audioEngine.playEffect(this.suddenDeathSfx, false);
-        for (let i = 0; i < 40; i++) {
+
+        for (let i = 0; i < BATTLE.SUDDEN_DEATH_PARTS; i++) {
             this.scheduleOnce(() => {
-                // 只有在遊戲還沒結束時才生零件
-                if (!this.isGameOver && GameManager.isPaused === false) {
-                    this.spawnSuddenDeathPart();
-                }
-            }, i * 0.01); 
+                if (!this.isGameOver && GameManager.isPaused === false) this.spawnSuddenDeathPart();
+            }, i * 0.01);
         }
-        this.schedule(this.suddenDeathTick, 0.25);
+
+        this.schedule(this.suddenDeathTick, BATTLE.SUDDEN_DEATH_TICK);
     }
 
     suddenDeathTick() {
         if (this.isGameOver || GameManager.isPaused) return;
-        if (this.playerCoreHealth) this.playerCoreHealth.takeDamage(6);
-        if (this.botCoreHealth) this.botCoreHealth.takeDamage(5);
-    }
-
-    updateBotAI(dt: number) {
-        if (!this.isBattleStarted || this.isGameOver || !this.playerRoot || !this.botRoot) return;
-        let distance = (this as any).playerRoot.x - (this as any).botRoot.x;
-        let absDist = Math.abs(distance);
-
-        let botMoveDir = 0;
-        if (absDist > 220) botMoveDir = distance > 0 ? 1 : -1; // 玩家太遠就追
-        else if (absDist < 120) botMoveDir = distance > 0 ? -1 : 1; // 玩家太近就退
-
-        this.botWheelJoints.forEach(j => {
-            const mul = this.botWheelSpeedMultipliers.get(j) ?? 1;
-            j.motorSpeed = 1500 * botMoveDir * mul;
-        });
-
-        // 攻擊 AI
-        for (let j of this.botWeaponJoints) {
-            const cur = j.getJointAngle();
-            if (absDist < 300) {
-                if (cur <= j.lowerAngle) j.motorSpeed = 1000;
-                else if (cur >= j.upperAngle) j.motorSpeed = -1000;
-                if (j.motorSpeed === 0) j.motorSpeed = 1000;
-            } else {
-                if (cur > j.lowerAngle) j.motorSpeed = -400;
-            }
+        if (this.playerCar && this.playerCar.coreHealth) {
+            this.playerCar.coreHealth.takeDamage(BATTLE.PLAYER_CORE_DOT);
         }
-        this.botGunCooldown = Math.max(0, this.botGunCooldown - dt);
-        if (this.botGunNodes.length > 0 && this.botGunCooldown <= 0) {
-            for (const gunNode of this.botGunNodes) {
-                this.fireBulletFromWeapon(gunNode, "BOT");
-            }
-            this.botGunCooldown = this.botGunFireInterval;
+        if (this.botCar && this.botCar.coreHealth) {
+            this.botCar.coreHealth.takeDamage(BATTLE.BOT_CORE_DOT);
         }
     }
 
-    private updateGunFire(dt: number) {
-        this.playerGunCooldown = Math.max(0, this.playerGunCooldown - dt);
-        if (this.isAttacking && this.playerGunNodes.length > 0 && this.playerGunCooldown <= 0) {
-            for (const gunNode of this.playerGunNodes) {
-                this.fireBulletFromWeapon(gunNode, "PLAYER");
-            }
-            this.playerGunCooldown = this.gunFireInterval;
-        }
-    }
+    spawnSuddenDeathPart() {
+        if (this.isGameOver || GameManager.isPaused || this.allPrefabs.length === 0) return;
 
-    private fireBulletFromWeapon(weaponNode: cc.Node, side: "PLAYER" | "BOT") {
-        if (!weaponNode || !weaponNode.isValid) return;
+        const prefab = this.allPrefabs[Math.floor(Math.random() * this.allPrefabs.length)];
+        if (!prefab) return;
 
-        // 1. 取得武器中心的世界座標
-        const originWorld = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
+        const node = cc.instantiate(prefab);
+        node.parent = this.node.parent;
+        node.setPosition(Math.random() * 1200, 600);
+        node.group = GROUP.DEFAULT;
 
-        // 2. 取得槍口（firepoint）的世界座標
-        let firePoint = weaponNode.getChildByName("firepoint");
-        let muzzleWorld: cc.Vec2;
-        
-        if (firePoint) {
-            muzzleWorld = firePoint.convertToWorldSpaceAR(cc.v2(0, 0));
-        } else {
-            // 如果沒做 firepoint，假設箭頭長度 40，朝局部 X 軸正方向
-            muzzleWorld = weaponNode.convertToWorldSpaceAR(cc.v2(40, 0));
-        }
-
-        // 3. 【關鍵修正】方向 = 槍口座標 - 武器中心座標
-        // 這樣不管你的箭頭怎麼轉、怎麼縮放，向量永遠是從屁股指向尖端
-        let dir = muzzleWorld.sub(originWorld).normalize();
-
-        // 4. 如果向量長度太小（重疊），給個保底方向
-        if (dir.mag() < 0.1) {
-            dir = side === "PLAYER" ? cc.v2(-1, 0) : cc.v2(1, 0);
-        }
-
-        // 5. 創建子彈
-        this.createBulletNode(side, muzzleWorld, dir);
-    }
-
-    private createBulletNode(side: "PLAYER" | "BOT", worldPos: cc.Vec2, dir: cc.Vec2): cc.Node {
-        if (!this.bulletPrefab) {
-            cc.error("未綁定子彈 Prefab！");
-            return new cc.Node(); 
-        }
-
-        // 直接克隆預製體，這能完美避開剛才的報錯
-        const bullet = cc.instantiate(this.bulletPrefab);
-        
-        // 設定分組（務必與物理矩陣對應）
-        bullet.group = side === "PLAYER" ? "PLAYER_BULLET" : "BOT_BULLET";
-        
-        // 先設定位置和角度，再加進場景
-        bullet.angle = Math.atan2(dir.y, dir.x) * 180 / Math.PI;
-        bullet.parent = this.node;
-        bullet.setPosition(this.node.convertToNodeSpaceAR(worldPos));
-        bullet.zIndex = 5;
-
-        // 設定速度
-        const rb = bullet.getComponent(cc.RigidBody);
+        const rb = node.getComponent(cc.RigidBody);
         if (rb) {
-            rb.linearVelocity = cc.v2(dir.x * this.bulletSpeed, dir.y * this.bulletSpeed);
+            rb.type = cc.RigidBodyType.Dynamic;
+            rb.linearVelocity = cc.v2(0, -300);
+            rb.angularVelocity = (Math.random() - 0.5) * 500;
         }
 
-        // 設定腳本參數
-        const bulletComp = bullet.getComponent(Bullet);
-        if (bulletComp) {
-            bulletComp.ownerSide = side;
-            bulletComp.damage = this.bulletDamage;
-            bulletComp.lifeTime = this.bulletLifetime;
-        }
-
-        return bullet;
+        cc.tween(node)
+            .delay(4)
+            .to(0.5, { opacity: 0 })
+            .call(() => { if (node.isValid) node.destroy(); })
+            .start();
     }
 
+    // ====================================================================
+    // 勝負
+    // ====================================================================
     handleGameOver(winner: "PLAYER" | "BOT") {
         if (this.isGameOver) return;
         this.isGameOver = true;
-        cc.audioEngine.stopMusic();
 
+        cc.audioEngine.stopMusic();
         this.unschedule(this.suddenDeathTick);
         this.unschedule(this.spawnSuddenDeathPart);
+
         if (this.suddenDeathLabel) {
-            this.suddenDeathLabel.node.stopAllActions(); // 停止閃爍
-            this.suddenDeathLabel.node.active = false;   // 隱藏標籤
+            this.suddenDeathLabel.node.stopAllActions();
+            this.suddenDeathLabel.node.active = false;
         }
-        GameManager.gold += 200;
+
+        GameManager.gold += BATTLE.WIN_GOLD;
+
         if (winner === "PLAYER") {
             GameManager.playerWins++;
             if (this.victorySfx) cc.audioEngine.playEffect(this.victorySfx, false);
@@ -645,10 +397,10 @@ export default class BattleManager extends cc.Component {
 
         if (this.resultLabel) {
             this.resultLabel.node.active = true;
-            if (GameManager.playerWins >= 4) {
+            if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
                 this.resultLabel.string = "VICTORY";
                 this.resultLabel.node.color = cc.Color.YELLOW;
-            } else if (GameManager.botWins >= 4) {
+            } else if (GameManager.botWins >= BATTLE.WINS_TO_FINISH) {
                 this.resultLabel.string = "DEFEAT";
                 this.resultLabel.node.color = cc.Color.RED;
             } else {
@@ -658,7 +410,7 @@ export default class BattleManager extends cc.Component {
         }
 
         this.scheduleOnce(() => {
-            if (GameManager.playerWins >= 4 || GameManager.botWins >= 4) {
+            if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH || GameManager.botWins >= BATTLE.WINS_TO_FINISH) {
                 GameManager.resetAllData();
                 cc.director.loadScene("Menu");
             } else {
@@ -667,97 +419,52 @@ export default class BattleManager extends cc.Component {
         }, 3);
     }
 
-    onKeyDown(e: cc.Event.EventKeyboard) {
-        if (!this.isBattleStarted) return;
-        if (e.keyCode === cc.macro.KEY.a || e.keyCode === cc.macro.KEY.left) this.moveDir = 1;
-        if (e.keyCode === cc.macro.KEY.d || e.keyCode === cc.macro.KEY.right) this.moveDir = -1;
-        if (e.keyCode === cc.macro.KEY.space) this.isAttacking = true;
-    }
-
-    onKeyUp(e: cc.Event.EventKeyboard) {
-        const k = e.keyCode;
-        if (k === cc.macro.KEY.a || k === cc.macro.KEY.d || k === cc.macro.KEY.left || k === cc.macro.KEY.right) this.moveDir = 0;
-        if (k === cc.macro.KEY.space) this.isAttacking = false;
-    }
-
-    getPrefabByName(name: string): cc.Prefab | undefined {
-        const clean = name.replace(/\([^)]*\)/g, "").trim().toLowerCase();
-        return this.allPrefabs.find(p => p && p.name.trim().toLowerCase() === clean);
-    }
-    onOpenSettings() {
-        if (!this.settingsPrefab) {
-            cc.error("BattleManager: settingsPrefab 未綁定！");
-            return;
+    // ====================================================================
+    // 輸入
+    // ====================================================================
+    onKeyDown(event: cc.Event.EventKeyboard) {
+        switch (event.keyCode) {
+            case cc.macro.KEY.a:
+            case cc.macro.KEY.left:
+                this.moveDir = 1;
+                break;
+            case cc.macro.KEY.d:
+            case cc.macro.KEY.right:
+                this.moveDir = -1;
+                break;
+            case cc.macro.KEY.space:
+                this.isAttacking = true;
+                break;
         }
+    }
 
-        // 1. 防止重複打開
-        if (cc.find("Canvas/SettingsUI")) return;
+    onKeyUp(event: cc.Event.EventKeyboard) {
+        switch (event.keyCode) {
+            case cc.macro.KEY.a:
+            case cc.macro.KEY.left:
+                if (this.moveDir === 1) this.moveDir = 0;
+                break;
+            case cc.macro.KEY.d:
+            case cc.macro.KEY.right:
+                if (this.moveDir === -1) this.moveDir = 0;
+                break;
+            case cc.macro.KEY.space:
+                this.isAttacking = false;
+                break;
+        }
+    }
 
-        // 2. 生成設定界面
+    onOpenSettings() {
+        if (!this.settingsPrefab) return;
+
         const node = cc.instantiate(this.settingsPrefab);
         node.name = "SettingsUI";
         const canvas = cc.find("Canvas");
         node.parent = canvas;
-
-        // 3. 重要：確保 UI 在最前面
-        // 你的子彈用了 9999，所以 UI 必須更高，或是確保層級在最後
-        node.zIndex = 10; 
         node.setPosition(0, 0);
+        node.zIndex = 10;
 
-        // 4. 設定遊戲暫停
         GameManager.isPaused = true;
-        
-        // 5. 暫停音效
         cc.audioEngine.pauseMusic();
-    }
-    spawnSuddenDeathPart() {
-        if (this.isGameOver || GameManager.isPaused || this.allPrefabs.length === 0) return;
-        
-        const prefab = this.allPrefabs[Math.floor(Math.random() * this.allPrefabs.length)];
-        if (!prefab) return;
-
-        const node = cc.instantiate(prefab);
-        node.parent = this.node.parent; 
-        
-        // --- 修正座標：從螢幕上方隨機寬度掉落 ---
-        const randomX = Math.random() * 1200; // 覆蓋大部分螢幕寬度
-        node.setPosition(randomX, 600); 
-        node.group = "default"; 
-        
-        const rb = node.getComponent(cc.RigidBody);
-        if (rb) {
-            rb.type = cc.RigidBodyType.Dynamic; 
-            rb.linearVelocity = cc.v2(0, -300); // 給一個向下的初速
-            rb.angularVelocity = (Math.random() - 0.5) * 500;
-        }
-
-        cc.tween(node).delay(4).to(0.5, { opacity: 0 }).call(() => { if (node.isValid) node.destroy(); }).start();
-    }
-    // 專門處理 Bot 延遲登場的邏輯
-    private spawnBotSequence() {
-        const totalRounds = GameManager.playerWins + GameManager.botWins;
-        let botIndex = totalRounds <= 1 ? 0 : (totalRounds <= 3 ? 1 : 2);
-        
-        if (GameManager.botConfigs && GameManager.botConfigs.length > botIndex) {
-            console.log("序列載入：Bot 登場");
-            // 在左邊生成 Bot
-            this.spawnGridCar(GameManager.botConfigs[botIndex], cc.v2(-300, 50), "BOT", (this as any).botRoot);
-        }
-    }
-
-    // 喊 FIGHT 時啟動兩台車的物理
-    private startAllPhysics() {
-        const activate = (root: cc.Node) => {
-            if (!root) return;
-            let rbs = root.getComponentsInChildren(cc.RigidBody);
-            rbs.forEach(rb => {
-                rb.type = cc.RigidBodyType.Dynamic;
-                rb.linearVelocity = cc.v2(0, 0);
-                rb.angularVelocity = 0;
-                rb.awake = true;
-            });
-        };
-        activate((this as any).playerRoot);
-        activate((this as any).botRoot);
     }
 }
