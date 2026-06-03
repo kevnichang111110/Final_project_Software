@@ -43,7 +43,7 @@ export const BATTLE = {
 
 export const JOINT = {
     WHEEL_FREQUENCY: 10,
-    WHEEL_MAX_TORQUE: 100000,
+    WHEEL_MAX_TORQUE: 400000,
     WHEEL_TARGET_SPEED: -600,   // 玩家輪子目標馬達速度（乘上 moveDir）
     WHEEL_SMOOTHING: 0.15,      // 輪速插值平滑
     WELD_FREQUENCY: 0,

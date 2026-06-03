@@ -14,6 +14,8 @@ import Explosion from "./Explosion";
 import Health from "../HealthManager";
 import MouseCannon from "../weapons/MouseCannon";
 
+// FIXME: Car的馬力太低，爬牆/爬斜坡能力太差了。之後要調整數值或改成「輪子接得更緊」的關節設定，讓車子更有力。
+
 // 一台車建好後對外提供的資料
 export interface BuiltCar {
     partsMap: Map<string, cc.Node>;
