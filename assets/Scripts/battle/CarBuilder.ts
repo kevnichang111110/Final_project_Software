@@ -10,16 +10,20 @@ import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
 } from "../core/PartUtils";
 import JointFactory from "./JointFactory";
+import Explosion from "./Explosion";
 import Health from "../HealthManager";
 
 // 一台車建好後對外提供的資料
 export interface BuiltCar {
     partsMap: Map<string, cc.Node>;
     coreHealth: Health | null;
+    coreNode: cc.Node | null;        // 核心節點（空中旋轉施力用）
     gunNodes: cc.Node[];
     wheelJoints: cc.WheelJoint[];
     weaponJoints: cc.RevoluteJoint[];
     wheelMultipliers: Map<cc.WheelJoint, number>;
+    wheelAbilities: any[];           // WheelAbility[]（噴射/彈跳）
+    mouseCannons: cc.Node[];         // 掛了 MouseCannon 的武器節點
 }
 
 export interface BuildParams {
@@ -39,10 +43,13 @@ export default class CarBuilder {
         const result: BuiltCar = {
             partsMap: new Map(),
             coreHealth: null,
+            coreNode: null,
             gunNodes: [],
             wheelJoints: [],
             weaponJoints: [],
             wheelMultipliers: new Map(),
+            wheelAbilities: [],
+            mouseCannons: [],
         };
 
         const groupName = side === "PLAYER" ? GROUP.PLAYER_PART : GROUP.BOT_PART;
@@ -79,7 +86,19 @@ export default class CarBuilder {
             }
 
             const isCore = isCoreNode(node);
-            if (isCore) result.coreHealth = hp;
+            if (isCore) {
+                result.coreHealth = hp;
+                result.coreNode = node;
+            }
+
+            // 收集特殊能力組件（用字串避免額外 import 耦合）
+            const wheelAbility = node.getComponent("WheelAbility");
+            if (wheelAbility) result.wheelAbilities.push(wheelAbility);
+            if (node.getComponent("MouseCannon")) result.mouseCannons.push(node);
+
+            // 生成音效（若有掛 PartAudio）
+            const audio = node.getComponent("PartAudio") as any;
+            if (audio && audio.playSpawn) audio.playSpawn();
 
             hp.onDieCallback = () => {
                 CarBuilder.disjointPart(node);
@@ -115,11 +134,18 @@ export default class CarBuilder {
         return result;
     }
 
-    // 零件死亡 → 斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀
+    // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀
     static disjointPart(node: cc.Node) {
+        // 在零件原本位置炸一下（特效掛在父層，零件之後被銷毀也不影響）
+        const parent = node.parent;
+        if (parent) {
+            const worldPos = node.convertToWorldSpaceAR(cc.v2(0, 0));
+            const size = Math.max(node.width, node.height) || 60;
+            Explosion.spawn(parent, worldPos, size);
+        }
+
         node.getComponents(cc.Joint).forEach(j => j.destroy());
 
-        const parent = node.parent;
         if (parent) {
             parent.getComponentsInChildren(cc.Joint).forEach(j => {
                 if (j.connectedBody && j.connectedBody.node === node) j.destroy();

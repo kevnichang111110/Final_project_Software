@@ -77,3 +77,46 @@ export const DAMAGE = {
     MIN_TO_APPLY: 0.5,          // 低於此值的傷害忽略
     INVINCIBILITY: 0.1,         // 受擊後無敵時間
 };
+
+// === 以下為新功能新增的常數 ===
+
+// 空中左右旋轉（施加在核心剛體上的扭矩）
+export const AIR = {
+    ROTATE_TORQUE: 1200000,   // A/D 在空中旋轉車身的扭矩
+    MAX_ANGULAR_SPEED: 220,   // 角速度上限（度/秒），避免無限加速狂轉
+};
+
+// 特殊輪子能力
+export const ABILITY = {
+    JET_FORCE: 2600000,       // 噴射輪：boost 時每幀向上推力
+    BOUNCE_RESTITUTION: 1.1,  // 彈跳輪：碰撞反彈係數
+};
+
+// 滑鼠瞄準砲（會傷害雙方方塊的子彈）
+export const MOUSE_BULLET = {
+    SPEED: 2000,
+    DAMAGE: 25,
+    LIFETIME: 2.5,
+    FIRE_INTERVAL: 0.18,
+};
+
+// 搶奪階段（第 9 點，即時競速拍箱子）
+export const SCRAMBLE = {
+    DURATION: 15,          // 限時秒數
+    MIN_BOXES: 4,
+    MAX_BOXES: 5,
+    MOVE_SPEED: 420,       // grabber 水平速度
+    JUMP_IMPULSE: 9000,    // 跳躍衝量
+    GRABBER_SIZE: 60,
+    BOX_SIZE: 70,
+    GROUND_Y: -300,        // 地面高度（場景中心為原點）
+    ARENA_WIDTH: 1200,
+    BOT_JUMP_DY: 50,       // Bot 目標箱子高出這麼多就跳
+    AFTER_SCENE: "Shop",   // 搶奪結束後前往的場景
+};
+
+// 回合流程
+export const FLOW = {
+    USE_SCRAMBLE: true,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
+    SCRAMBLE_SCENE: "Scramble",
+};

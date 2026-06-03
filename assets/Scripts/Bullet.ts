@@ -17,6 +17,9 @@ export default class Bullet extends cc.Component {
 
     public ownerSide: "PLAYER" | "BOT" = "PLAYER";
 
+    // true 時為「無差別子彈」：不分敵我，打到任何方塊都會造成傷害（滑鼠砲用）
+    public damagesAll: boolean = false;
+
     private hasExploded: boolean = false;
 
     onLoad() {

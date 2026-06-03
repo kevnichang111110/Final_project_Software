@@ -386,15 +386,38 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 空中左右旋轉（第 5 點）：A/D 對核心施扭矩，角速度有上限避免狂轉。
-    // 地面上輪子與焊接會抵抗大部分扭矩；離地時就能用來翻正/轉體。
+    // 空中左右旋轉（第 5 點）：只有「離地」時 A/D 才旋轉車身；貼在地面上就交給輪子驅動，不硬翻。
     private updateAirRotation() {
         if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
+        if (this.isPlayerGrounded()) return;   // 車子在地上 → 不旋轉
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
         if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
             (rb as any).applyTorque(this.moveDir * AIR.ROTATE_TORQUE, true);
         }
+    }
+
+    // 著地偵測：從每個輪子往正下方打一條短射線，碰到地面/邊界就算著地。
+    // （地面/邊界節點的 group 為 default 或 boundary，與子彈判定地板的依據一致。）
+    private isPlayerGrounded(): boolean {
+        if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return false;
+        const pm = cc.director.getPhysicsManager();
+
+        for (const j of this.playerCar.wheelJoints) {
+            const wheelRb: any = (j as any).connectedBody;
+            const wheelNode: cc.Node = wheelRb && wheelRb.node ? wheelRb.node : null;
+            if (!wheelNode || !wheelNode.isValid) continue;
+
+            const o = wheelNode.convertToWorldSpaceAR(cc.v2(0, 0));
+            const probe = Math.max(wheelNode.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
+            const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - probe), cc.RayCastType.All);
+
+            for (const r of results) {
+                const g = r.collider.node.group;
+                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
+            }
+        }
+        return false;
     }
 
     // 噴射輪（第 4 點）：按住 boost 時每幀向上推
@@ -526,16 +549,23 @@ export default class BattleManager extends cc.Component {
             }
         }
 
-        this.scheduleOnce(() => {
-            if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH || GameManager.botWins >= BATTLE.WINS_TO_FINISH) {
-                GameManager.resetAllData();
-                cc.director.loadScene("Menu");
-            } else if (FLOW.USE_SCRAMBLE) {
-                cc.director.loadScene(FLOW.SCRAMBLE_SCENE);  // 每局結束 → 搶奪階段 → （由它）進商店
-            } else {
-                cc.director.loadScene("Shop");
-            }
-        }, 3);
+        this.scheduleOnce(() => this.goToNextScene(), 3);
+    }
+
+    private goToNextScene() {
+        const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
+            || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
+
+        let target = "Shop";
+        if (finished) {
+            GameManager.resetAllData();
+            target = "Menu";
+        } else if (FLOW && FLOW.USE_SCRAMBLE) {   // FLOW 防呆：未定義時直接走商店，不讓它丟例外卡住
+            target = FLOW.SCRAMBLE_SCENE;
+        }
+
+        cc.log(`[BattleManager] 回合結束 → 載入「${target}」 (P:${GameManager.playerWins}/B:${GameManager.botWins}, USE_SCRAMBLE=${FLOW ? FLOW.USE_SCRAMBLE : "undefined"})`);
+        cc.director.loadScene(target);
     }
 
     // ====================================================================

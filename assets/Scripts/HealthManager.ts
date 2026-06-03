@@ -195,6 +195,14 @@ export default class Health extends cc.Component {
         // --- 子彈 ---
         const bullet = otherCollider.node.getComponent("Bullet") as Bullet;
         if (bullet) {
+            // 無差別子彈（滑鼠砲）：不分敵我都受傷
+            if (bullet.damagesAll) {
+                const dmg = isWeaponNode(this.node) ? bullet.damage * DAMAGE.BULLET_VS_WEAPON : bullet.damage;
+                this.takeDamage(dmg);
+                bullet.explode();
+                return;
+            }
+
             const mySide = myGroup.includes(GROUP.PLAYER_KEY) ? "PLAYER" : "BOT";
 
             if (bullet.ownerSide !== mySide) {
@@ -255,7 +263,14 @@ export default class Health extends cc.Component {
     takeDamage(dmg: number) {
         if (this.currentHP <= 0 || this.isInvincible) return;
 
-        const finalDmg = Math.min(dmg, DAMAGE.MAX_PER_HIT);
+        // 方塊防禦：BlockTrait.damageMultiplier < 1 代表高防禦
+        let incoming = dmg;
+        const trait = this.getComponent("BlockTrait") as any;
+        if (trait && typeof trait.damageMultiplier === "number") {
+            incoming *= trait.damageMultiplier;
+        }
+
+        const finalDmg = Math.min(incoming, DAMAGE.MAX_PER_HIT);
         this.currentHP -= finalDmg;
 
         // 受擊 → 讓血條明顯顯示一段時間
@@ -266,7 +281,7 @@ export default class Health extends cc.Component {
             this.isInvincible = false;
         }, this.invincibilityDuration);
 
-        if (this.hitSound) cc.audioEngine.playEffect(this.hitSound, false);
+        this.playSfx("hit");
 
         if (this.currentHP <= 0) {
             this.die();
@@ -274,8 +289,19 @@ export default class Health extends cc.Component {
     }
 
     die() {
-        if (this.dieSound) cc.audioEngine.playEffect(this.dieSound, false);
+        this.playSfx("die");
         this.currentHP = 0;
         if (this.onDieCallback) this.onDieCallback();
+    }
+
+    // 優先用 PartAudio（第 8 點的通用音效介面），沒有才退回 Health 自己的舊欄位
+    private playSfx(kind: "hit" | "die") {
+        const audio = this.getComponent("PartAudio") as any;
+        if (audio) {
+            if (kind === "hit" && audio.playHit) { audio.playHit(); return; }
+            if (kind === "die" && audio.playDie) { audio.playDie(); return; }
+        }
+        const clip = kind === "hit" ? this.hitSound : this.dieSound;
+        if (clip) cc.audioEngine.playEffect(clip, false);
     }
 }

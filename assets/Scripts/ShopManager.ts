@@ -83,8 +83,16 @@ export default class ShopManager extends cc.Component {
 
     // 把搶奪階段玩家(P1)搶到的道具，免費生成在商店上方讓玩家拖去組裝
     private grantClaimedTools() {
-        const tools = GameManager.consumeClaimedTools("P1");
-        if (!tools || tools.length === 0) return;
+        // 防呆：若 GameManager 尚未更新到含此方法，直接跳過，避免商店進場報錯
+        if (typeof (GameManager as any).consumeClaimedTools !== "function") return;
+
+        let tools: string[] = [];
+        try {
+            tools = (GameManager as any).consumeClaimedTools("P1") || [];
+        } catch (e) {
+            tools = [];
+        }
+        if (tools.length === 0) return;
 
         let i = 0;
         for (const name of tools) {
