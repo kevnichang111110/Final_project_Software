@@ -8,7 +8,7 @@
 //
 // 建議在這個 prefab 底下放一個名為 "firepoint" 的子節點當砲口，子彈會從那裡發射。
 
-import { MOUSE_BULLET } from "../core/GameConstants";
+import { MOUSE_BULLET, MOUSE_TURRET } from "../core/GameConstants";
 
 const { ccclass, property } = cc._decorator;
 
@@ -16,6 +16,9 @@ const { ccclass, property } = cc._decorator;
 export default class MouseCannon extends cc.Component {
     @property({ tooltip: "開火間隔（秒）" })
     fireInterval: number = MOUSE_BULLET.FIRE_INTERVAL;
+
+    @property({ tooltip: "可旋轉半角（度）。總可轉範圍是 2 倍：90 = 左右各 90（共 180）；想略小於 180 就填小一點" })
+    aimHalfArc: number = MOUSE_TURRET.HALF_ARC;
 
     @property({ tooltip: "子彈速度" })
     bulletSpeed: number = MOUSE_BULLET.SPEED;

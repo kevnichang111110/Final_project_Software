@@ -67,8 +67,8 @@ export const BOT = {
 };
 
 export const DAMAGE = {
-    COLLISION_THRESHOLD: 200,   // 相對速度低於此值不造成碰撞傷害
-    COLLISION_DIVISOR: 10,      // (相對速度 - 門檻) / 此值 = 傷害
+    COLLISION_THRESHOLD: 260,   // 相對速度低於此值不造成碰撞傷害（提高 → 更難造成碰撞傷害）
+    COLLISION_DIVISOR: 16,      // (相對速度 - 門檻) / 此值 = 傷害（加大 → 傷害變低）
     WEAPON_VS_WEAPON: 0.2,      // 武器互撞折扣
     SELF_WEAPON_MULT: 0.05,     // 我是武器去撞人，我受的傷
     OTHER_WEAPON_MULT: 4.0,     // 別人用武器撞我，我受的傷
@@ -82,9 +82,9 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    ROTATE_TORQUE: 350000,    // A/D 在空中旋轉車身的扭矩（原本 1200000 太猛，調低）
-    MAX_ANGULAR_SPEED: 120,   // 角速度上限（度/秒），愈小轉得愈慢
-    GROUNDED_PROBE: 18,       // 著地偵測：輪子底部再往下探測這麼多 px
+    ROTATE_TORQUE: 220000,    // 旋轉扭矩（再調低）
+    MAX_ANGULAR_SPEED: 80,    // 角速度上限（度/秒），愈小轉得愈慢（再調低）
+    GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
 };
 
 // 特殊輪子能力
@@ -120,4 +120,39 @@ export const SCRAMBLE = {
 export const FLOW = {
     USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
+    USE_WALLRIDE: false,      // 牆面行駛：預設關閉。等你做好環形賽道、要測爬牆時再設 true
+};
+
+// 近戰揮砍冷卻
+export const MELEE = {
+    COOLDOWN: 0.55,            // 兩次揮砍之間的冷卻秒數
+    REACH_TOLERANCE: 3,        // 視為「揮到頂」的角度容差（度）
+};
+
+// 滑鼠瞄準砲（旋轉砲塔）
+export const MOUSE_TURRET = {
+    HALF_ARC: 85,              // 可旋轉半角（度）；總範圍 = 2×，預設 170 度（略小於 180）。想要正負 90 = 180 就填 90
+    AIM_GAIN: 20,              // 瞄準 P 控制器增益：角度差 × 此值 = 馬達速度
+    AIM_SPEED: 1200,           // 瞄準馬達最大速度（度/秒）
+    TORQUE: 600000,            // 瞄準馬達扭矩（要夠大才推得動槍）
+};
+
+// 牆面行駛 / 繞圈（相對地面重力）—— 這些是手感調校的主要旋鈕
+export const WALLRIDE = {
+    PROBE: 90,            // 從核心往車底探測地面的射線長度（要 > 車子半高）
+    STICK: 0.5,           // 額外貼附力（相對重力的比例），愈大愈黏牆
+    // 介入門檻：依「地面相對水平的傾斜度」漸進啟動。tilt = (1 - 法線.y)/2：平地=0、牆=0.5、天花板=1
+    // tilt 低於 ENGAGE_LO（約 18 度以內，含地面小顛簸）→ 完全不介入，交給一般物理 → 不會亂彈
+    // tilt 高於 ENGAGE_HI（約 50 度以上）→ 完全啟動牆面行駛
+    // tilt 低於 ENGAGE_LO（約 50 度以內，含地面顛簸）→ 完全不介入；高於 ENGAGE_HI（約 70 度以上）→ 完全啟動
+    ENGAGE_LO: 0.18,
+    ENGAGE_HI: 0.32,
+    NORMAL_SMOOTH: 0.25,  // 地面法線平滑係數（愈小愈平滑，抗顛簸）
+    ALIGN_GAIN: 22000,    // 對齊扭矩增益（車頂轉向地面法線的力道）
+    ALIGN_DAMP: 12000,    // 對齊阻尼（抑制過衝抖動）
+    ALIGN_MAX: 1500000,   // 對齊扭矩上限
+    WALL_THRESHOLD: 0.4,  // 地面法線水平分量大於此值視為「在牆上」才允許脫離
+    DETACH_IMPULSE: 7000, // 脫離時往牆外彈的衝量
+    DETACH_SPIN: 1200,    // 脫離時的翻轉角衝量
+    DETACH_TIME: 0.5,     // 脫離後多久內不重新吸附（讓它飛出去）
 };

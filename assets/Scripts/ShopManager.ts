@@ -40,7 +40,11 @@ export default class ShopManager extends cc.Component {
     @property([ItemData]) itemPool: ItemData[] = [];
     @property([cc.Sprite]) slotIcons: cc.Sprite[] = [];
     @property([cc.Label]) slotPriceLabels: cc.Label[] = [];
-    @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
+    @property({ type: [cc.Prefab], tooltip: "選填：只放『不在商店販售、也不是核心』的零件即可。商店商品的 prefab 會自動從 itemPool 取得，不必再重複拖一次" })
+    allPrefabs: cc.Prefab[] = [];
+
+    // 實際查找用的零件清單：onLoad 時自動由 itemPool + corePrefab + allPrefabs 合併產生
+    private partPrefabs: cc.Prefab[] = [];
 
     @property(cc.Prefab) corePrefab: cc.Prefab | null = null;
 
@@ -56,6 +60,8 @@ export default class ShopManager extends cc.Component {
     private bgmAudioID: number = -1;
 
     onLoad() {
+        this.buildPrefabList();
+
         if (this.bgmClip) {
             this.bgmAudioID = cc.audioEngine.playMusic(this.bgmClip, true);
         }
@@ -76,8 +82,22 @@ export default class ShopManager extends cc.Component {
 
         this.grantClaimedTools();
 
+        this.slotCategories = [this.slot0Category, this.slot1Category, this.slot2Category];
+
         for (let i = 0; i < 3; i++) {
             this.refreshSlot(i);
+        }
+
+        this.fixSlotIconLayering();
+    }
+
+    // 讓商店格子的「物品圖片」顯示在按鈕前面（圖片在前）。
+    // 圖片是純 Sprite、不掛 Button/觸控，所以即使疊在按鈕上面，觸控仍會交給後面的按鈕
+    //（選取優先級在按鈕後面）。若你的圖片目前蓋掉按鈕點不到，請見下方說明。
+    private fixSlotIconLayering() {
+        for (const sp of this.slotIcons) {
+            if (!sp || !sp.node) continue;
+            sp.node.zIndex = 5;   // 排到同層按鈕之上（數字比按鈕大即可）
         }
     }
 
@@ -196,7 +216,23 @@ export default class ShopManager extends cc.Component {
     }
 
     getPrefabByName(name: string): cc.Prefab | undefined {
-        return utilGetPrefabByName(this.allPrefabs, name);
+        return utilGetPrefabByName(this.partPrefabs, name);
+    }
+
+    // 把 itemPool 裡每個商品的 partPrefab + corePrefab + （選填的）allPrefabs 合併成一份零件清單，
+    // 並依名稱去重。如此商店只需設定 itemPool 一次即可，不必再另外維護 allPrefabs。
+    private buildPrefabList() {
+        const list: cc.Prefab[] = [];
+        const seen: { [name: string]: boolean } = {};
+        const add = (p: cc.Prefab | null) => {
+            if (p && !seen[p.name]) { seen[p.name] = true; list.push(p); }
+        };
+
+        for (const item of this.itemPool) if (item) add(item.partPrefab);
+        add(this.corePrefab);
+        for (const p of this.allPrefabs) add(p);   // 仍可手動補充不在商店賣的零件
+
+        this.partPrefabs = list;
     }
     // ----------------------------------------------------
 
@@ -251,8 +287,15 @@ export default class ShopManager extends cc.Component {
         }
     }
 
-    // 三個格子固定對應：0=方塊、1=武器、2=輪子
-    private slotCategories: PartType[] = [PartType.Body, PartType.Weapon, PartType.Wheel];
+    @property({ type: cc.Enum(PartType), tooltip: "第 1 格（買按鈕 CustomEventData = 0）賣哪一類" })
+    slot0Category = PartType.Body;
+    @property({ type: cc.Enum(PartType), tooltip: "第 2 格（買按鈕 CustomEventData = 1）賣哪一類" })
+    slot1Category = PartType.Weapon;
+    @property({ type: cc.Enum(PartType), tooltip: "第 3 格（買按鈕 CustomEventData = 2）賣哪一類" })
+    slot2Category = PartType.Wheel;
+
+    // 執行期由上面三個欄位組出，索引對應按鈕的 CustomEventData
+    private slotCategories: PartType[] = [];
 
     refreshSlot(index: number) {
         const eligibleAll = this.getEligibleItems();

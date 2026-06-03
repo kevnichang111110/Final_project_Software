@@ -32,7 +32,7 @@ export default class WeaponSystem {
     }
 
     // 朝武器槍口方向射擊（方向 = 槍口 firepoint - 武器中心）
-    fireFrom(weaponNode: cc.Node, side: "PLAYER" | "BOT") {
+    fireFrom(weaponNode: cc.Node, side: "PLAYER" | "BOT", override?: ShotOverride) {
         if (!weaponNode || !weaponNode.isValid) return;
 
         const originWorld = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
@@ -44,7 +44,7 @@ export default class WeaponSystem {
         let dir = muzzleWorld.sub(originWorld).normalize();
         if (dir.mag() < 0.1) dir = side === "PLAYER" ? cc.v2(-1, 0) : cc.v2(1, 0);
 
-        this.createBullet(side, muzzleWorld, dir);
+        this.createBullet(side, muzzleWorld, dir, override);
     }
 
     // 朝某個世界座標射擊（滑鼠砲）。子彈從 firepoint（或武器中心朝目標前方一點）射出。

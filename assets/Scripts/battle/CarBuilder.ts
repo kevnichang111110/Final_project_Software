@@ -4,7 +4,7 @@
 // 並把建立結果（核心血量、槍械、各種 joint）打包回傳，讓 BattleManager / BotAI 使用。
 
 import GameManager from "../GameManager";
-import { GROUP, BATTLE, GRID } from "../core/GameConstants";
+import { GROUP, BATTLE, GRID, MOUSE_TURRET } from "../core/GameConstants";
 import { PartType, WeaponMode } from "../core/PartType";
 import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
@@ -12,6 +12,7 @@ import {
 import JointFactory from "./JointFactory";
 import Explosion from "./Explosion";
 import Health from "../HealthManager";
+import MouseCannon from "../weapons/MouseCannon";
 
 // 一台車建好後對外提供的資料
 export interface BuiltCar {
@@ -23,7 +24,7 @@ export interface BuiltCar {
     weaponJoints: cc.RevoluteJoint[];
     wheelMultipliers: Map<cc.WheelJoint, number>;
     wheelAbilities: any[];           // WheelAbility[]（噴射/彈跳）
-    mouseCannons: cc.Node[];         // 掛了 MouseCannon 的武器節點
+    mouseCannons: { node: cc.Node, joint: cc.RevoluteJoint }[];  // 滑鼠砲：節點 + 旋轉關節
 }
 
 export interface BuildParams {
@@ -71,10 +72,18 @@ export default class CarBuilder {
 
             result.partsMap.set(`${data.gridX},${data.gridY}`, node);
 
-            // 紀錄遠程武器節點，之後 WeaponSystem 用它開火
+            // 紀錄遠程武器節點。玩家的槍一律做成「跟隨滑鼠的砲塔」；BOT 的槍維持焊死直射。
             const drag = getDraggable(node);
-            if (drag && drag.partType === PartType.Weapon && drag.weaponMode === WeaponMode.Gun) {
-                result.gunNodes.push(node);
+            const hasMouseCannon = !!node.getComponent(MouseCannon);
+            const isGun = !!drag && drag.partType === PartType.Weapon && drag.weaponMode === WeaponMode.Gun;
+            const wantTurret = hasMouseCannon || (side === "PLAYER" && isGun);
+
+            if (drag && drag.partType === PartType.Weapon) {
+                cc.log(`[CarBuilder] ${side} 武器「${node.name}」 weaponMode=${drag.weaponMode} (0=Melee,1=Gun) MouseCannon=${hasMouseCannon} 砲塔=${wantTurret}`);
+            }
+
+            if (isGun && !wantTurret) {
+                result.gunNodes.push(node);   // 只剩 BOT 一般槍
             }
 
             // 血量（沒有就補一個）
@@ -94,7 +103,6 @@ export default class CarBuilder {
             // 收集特殊能力組件（用字串避免額外 import 耦合）
             const wheelAbility = node.getComponent("WheelAbility");
             if (wheelAbility) result.wheelAbilities.push(wheelAbility);
-            if (node.getComponent("MouseCannon")) result.mouseCannons.push(node);
 
             // 生成音效（若有掛 PartAudio）
             const audio = node.getComponent("PartAudio") as any;
@@ -126,12 +134,45 @@ export default class CarBuilder {
                     result.wheelMultipliers.set(r.joint, r.multiplier);
                 }
             } else if (isWeaponNode(node)) {
-                const j = JointFactory.createWeaponJoint(node, result.partsMap, x, y, side);
-                if (j) result.weaponJoints.push(j);
+                const drag2 = getDraggable(node);
+                const mc = node.getComponent(MouseCannon);
+                const gun = !!drag2 && drag2.weaponMode === WeaponMode.Gun;
+                const turret = !!mc || (side === "PLAYER" && gun);
+                if (turret) {
+                    const halfArc = mc && typeof mc.aimHalfArc === "number" ? mc.aimHalfArc : MOUSE_TURRET.HALF_ARC;
+                    const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, halfArc, MOUSE_TURRET.TORQUE);
+                    if (tj) {
+                        result.mouseCannons.push({ node, joint: tj });
+                        CarBuilder.addAimLine(node);
+                    }
+                } else {
+                    const j = JointFactory.createWeaponJoint(node, result.partsMap, x, y, side);
+                    if (j) result.weaponJoints.push(j);
+                }
             }
         });
 
+        cc.log(`[CarBuilder] ${side} 完成：一般槍=${result.gunNodes.length}、近戰=${result.weaponJoints.length}、滑鼠砲=${result.mouseCannons.length}`);
         return result;
+    }
+
+    // 在砲塔武器上畫一條沿砲管方向的準星線（它是武器的子節點，會跟著武器一起轉，所以就是瞄準方向）
+    private static addAimLine(gunNode: cc.Node) {
+        if (gunNode.getChildByName("aimLine")) return;
+        const fp = gunNode.getChildByName("firepoint");
+        let dir = fp ? cc.v2(fp.x, fp.y) : cc.v2(40, 0);
+        if (dir.mag() < 1) dir = cc.v2(40, 0);
+        dir = dir.normalize();
+
+        const lineNode = new cc.Node("aimLine");
+        lineNode.parent = gunNode;
+        lineNode.zIndex = 20;
+        const g = lineNode.addComponent(cc.Graphics);
+        g.lineWidth = 3;
+        g.strokeColor = cc.color(255, 90, 90, 200);
+        g.moveTo(dir.x * 12, dir.y * 12);
+        g.lineTo(dir.x * 240, dir.y * 240);
+        g.stroke();
     }
 
     // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀
@@ -153,12 +194,11 @@ export default class CarBuilder {
         }
 
         node.group = GROUP.DEFAULT;
-        const rb = node.getComponent(cc.RigidBody);
-        if (rb) rb.applyForceToCenter(cc.v2(0, 1000), true);
 
+        // 爆炸後立刻消失，不做上拋、不做淡化。
+        // 延遲一個極短時間再銷毀，是為了避開「在物理碰撞回呼當下直接 destroy」可能造成的 Box2D 崩潰。
         cc.tween(node)
-            .delay(1.5)
-            .to(0.5, { opacity: 0 })
+            .delay(0.02)
             .call(() => { if (node.isValid) node.destroy(); })
             .start();
     }

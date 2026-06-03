@@ -8,10 +8,13 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
+import WallRide from "./battle/WallRide";
+import MouseCannon from "./weapons/MouseCannon";
+import FirebaseService from "./net/FirebaseService";
 
 const { ccclass, property } = cc._decorator;
 
@@ -61,6 +64,10 @@ export default class BattleManager extends cc.Component {
     private mouseWorldPos: cc.Vec2 = cc.v2(0, 0);
     private mouseCannonCooldown = 0;
 
+    // 近戰揮砍冷卻
+    private meleeCooldown = 0;
+    private meleeSwinging = false;
+
     private playerRoot: cc.Node | null = null;
     private botRoot: cc.Node | null = null;
 
@@ -68,6 +75,8 @@ export default class BattleManager extends cc.Component {
     private botCar: BuiltCar | null = null;
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
+    private wallRide: WallRide | null = null;
+    private detachPressed = false;
 
     // 記分板
     private playerScoreLabel: cc.Label | null = null;
@@ -91,11 +100,12 @@ export default class BattleManager extends cc.Component {
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.on(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
 
-        const canvas = cc.find("Canvas");
-        if (canvas) {
-            canvas.on(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this);
-            canvas.on(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this);
-            canvas.on(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this);
+        // 滑鼠事件用 capture 階段監聽，並回退到自身節點，避免被上層 UI 攔截而收不到
+        const mouseTarget = cc.find("Canvas") || this.node;
+        if (mouseTarget) {
+            mouseTarget.on(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this, true);
+            mouseTarget.on(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this, true);
+            mouseTarget.on(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this, true);
         }
     }
 
@@ -103,11 +113,11 @@ export default class BattleManager extends cc.Component {
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
 
-        const canvas = cc.find("Canvas");
-        if (canvas) {
-            canvas.off(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this);
-            canvas.off(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this);
-            canvas.off(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this);
+        const mouseTarget = cc.find("Canvas") || this.node;
+        if (mouseTarget) {
+            mouseTarget.off(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this, true);
+            mouseTarget.off(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this, true);
+            mouseTarget.off(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this, true);
         }
     }
 
@@ -170,6 +180,8 @@ export default class BattleManager extends cc.Component {
         this.wheelSpeed = 0;
         this.playerGunCooldown = 0;
         this.mouseCannonCooldown = 0;
+        this.meleeCooldown = 0;
+        this.meleeSwinging = false;
         this.playerCar = null;
         this.botCar = null;
         this.botAI = null;
@@ -208,8 +220,8 @@ export default class BattleManager extends cc.Component {
             prefabs: this.allPrefabs,
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
-
-        // 開場倒數
+        this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
+        this.detachPressed = false;
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
@@ -287,9 +299,10 @@ export default class BattleManager extends cc.Component {
 
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
-        this.updateAirRotation();
+        if (this.wallRide) this.wallRide.update(dt, this.detachPressed);
+        if (!(this.wallRide && this.wallRide.isStuck())) this.updateAirRotation();
         this.updateJet();
-        this.updatePlayerMelee();
+        this.updatePlayerMelee(dt);
     }
 
     private updateCountdown(dt: number) {
@@ -323,7 +336,8 @@ export default class BattleManager extends cc.Component {
         this.playerGunCooldown = Math.max(0, this.playerGunCooldown - dt);
         if (!this.playerCar || !this.weapons) return;
 
-        if (this.isAttacking && this.playerCar.gunNodes.length > 0 && this.playerGunCooldown <= 0) {
+        // 遠程槍改用滑鼠左鍵發射（近戰仍維持空白鍵）
+        if (this.isMouseDown && this.playerCar.gunNodes.length > 0 && this.playerGunCooldown <= 0) {
             for (const gunNode of this.playerCar.gunNodes) {
                 this.weapons.fireFrom(gunNode, "PLAYER");
             }
@@ -331,28 +345,61 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 滑鼠瞄準砲（第 2 點）：按住左鍵朝游標方向連射，子彈無差別傷害
+    // 滑鼠瞄準砲：每幀讓砲塔轉向游標（受角度限制），按住左鍵沿砲管方向開火（無差別傷害）
     private updateMouseCannons(dt: number) {
         this.mouseCannonCooldown = Math.max(0, this.mouseCannonCooldown - dt);
         if (!this.playerCar || !this.weapons) return;
         const cannons = this.playerCar.mouseCannons;
-        if (cannons.length === 0 || !this.isMouseDown || this.mouseCannonCooldown > 0) return;
+        if (cannons.length === 0) return;
 
+        // 1) 旋轉瞄準（每幀，無論是否開火）
+        for (const c of cannons) {
+            if (c.node && c.node.isValid) this.aimTurret(c.node, c.joint);
+        }
+
+        // 2) 開火
+        if (!this.isMouseDown || this.mouseCannonCooldown > 0) return;
         let interval = 0.18;
-        for (const node of cannons) {
-            if (!node || !node.isValid) continue;
-            const mc = node.getComponent("MouseCannon") as any;
+        for (const c of cannons) {
+            if (!c.node || !c.node.isValid) continue;
+            const mc = c.node.getComponent(MouseCannon);
             if (mc) interval = mc.fireInterval;
-            this.weapons.fireTowards(node, "PLAYER", this.mouseWorldPos, {
+            this.weapons.fireFrom(c.node, "PLAYER", {
                 speed: mc ? mc.bulletSpeed : undefined,
                 damage: mc ? mc.bulletDamage : undefined,
                 lifetime: mc ? mc.bulletLifetime : undefined,
-                damagesAll: true,
+                damagesAll: !!mc,
             });
-            const audio = node.getComponent("PartAudio") as any;
+            const audio = c.node.getComponent("PartAudio") as any;
             if (audio && audio.playAttack) audio.playAttack();
         }
         this.mouseCannonCooldown = interval;
+    }
+
+    // 讓砲塔的砲管轉向游標：用 P 控制器驅動關節馬達，關節本身的角度上下限會夾住可轉範圍。
+    private aimTurret(weaponNode: cc.Node, joint: cc.RevoluteJoint) {
+        if (!joint || !joint.isValid) return;
+
+        const center = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
+        const fp = weaponNode.getChildByName("firepoint");
+        const muzzle = fp
+            ? fp.convertToWorldSpaceAR(cc.v2(0, 0))
+            : weaponNode.convertToWorldSpaceAR(cc.v2(40, 0));
+
+        const barrelDir = muzzle.sub(center);
+        const barrelAngle = Math.atan2(barrelDir.y, barrelDir.x) * 180 / Math.PI;
+
+        const toMouse = this.mouseWorldPos.sub(center);
+        if (toMouse.mag() < 1) return;
+        const aimAngle = Math.atan2(toMouse.y, toMouse.x) * 180 / Math.PI;
+
+        let diff = aimAngle - barrelAngle;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+
+        joint.enableMotor = true;
+        // 玩家零件是鏡像(scaleX 反向)，馬達正轉會讓砲管角度「反向」變化，所以這裡取負號才會朝游標
+        joint.motorSpeed = cc.misc.clampf(-diff * MOUSE_TURRET.AIM_GAIN, -MOUSE_TURRET.AIM_SPEED, MOUSE_TURRET.AIM_SPEED);
     }
 
     private updateMatchTimer(dt: number) {
@@ -428,18 +475,40 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    private updatePlayerMelee() {
-        if (!this.playerCar) return;
+    // 近戰揮砍：按住攻擊時，揮出 → 收回 → 冷卻 → 再揮，週期之間有冷卻時間。
+    private updatePlayerMelee(dt: number) {
+        if (!this.playerCar || this.playerCar.weaponJoints.length === 0) return;
         const hasWheel = this.playerCar.wheelJoints.length > 0;
 
+        if (this.meleeCooldown > 0) this.meleeCooldown = Math.max(0, this.meleeCooldown - dt);
+
+        // 冷卻結束且持續攻擊 → 開始新的一次揮砍
+        if (!this.meleeSwinging && this.isAttacking && this.meleeCooldown <= 0) {
+            this.meleeSwinging = true;
+            this.meleeCooldown = MELEE.COOLDOWN;
+        }
+
+        let allReachedTop = true;
         for (const j of this.playerCar.weaponJoints) {
             j.enableMotor = hasWheel;
             const cur = j.getJointAngle();
-            if (this.isAttacking) {
-                j.motorSpeed = cur < j.upperAngle ? JOINT.MELEE_ATTACK_SPEED : 0;
+            if (this.meleeSwinging) {
+                // 揮出到上限
+                if (cur < j.upperAngle - MELEE.REACH_TOLERANCE) {
+                    j.motorSpeed = JOINT.MELEE_ATTACK_SPEED;
+                    allReachedTop = false;
+                } else {
+                    j.motorSpeed = 0;
+                }
             } else {
+                // 收回到下限
                 j.motorSpeed = cur > j.lowerAngle ? JOINT.MELEE_RETURN_SPEED : 0;
             }
+        }
+
+        // 全部揮到頂 → 結束這次揮砍，開始收回（冷卻仍在倒數，冷卻完才會再揮）
+        if (this.meleeSwinging && allReachedTop) {
+            this.meleeSwinging = false;
         }
     }
 
@@ -558,6 +627,11 @@ export default class BattleManager extends cc.Component {
 
         let target = "Shop";
         if (finished) {
+            if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
+                // 玩家贏得整場 → 記錄到 Firebase（未登入 / 未設定時為安全的 no-op）
+                FirebaseService.incrementWins();
+                FirebaseService.submitBestScore(GameManager.playerWins);
+            }
             GameManager.resetAllData();
             target = "Menu";
         } else if (FLOW && FLOW.USE_SCRAMBLE) {   // FLOW 防呆：未定義時直接走商店，不讓它丟例外卡住
@@ -588,6 +662,10 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.up:
                 this.isBoosting = true;   // 噴射 boost
                 break;
+            case cc.macro.KEY.s:
+            case cc.macro.KEY.down:
+                this.detachPressed = true; // 脫離牆壁
+                break;
         }
     }
 
@@ -608,24 +686,24 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.up:
                 this.isBoosting = false;
                 break;
+            case cc.macro.KEY.s:
+            case cc.macro.KEY.down:
+                this.detachPressed = false;
+                break;
         }
     }
 
-    // 滑鼠：把螢幕座標轉成世界座標供瞄準
+    // 滑鼠：直接用 getLocation 當世界座標（與遊戲既有的節點世界座標系一致）
     private onMouseMove(e: cc.Event.EventMouse) {
-        const sp = e.getLocation();
-        const cam = cc.Camera.main;
-        if (cam && (cam as any).getScreenToWorldPoint) {
-            this.mouseWorldPos = (cam as any).getScreenToWorldPoint(cc.v2(sp.x, sp.y));
-        } else {
-            this.mouseWorldPos = cc.v2(sp.x, sp.y);
-        }
+        const p = e.getLocation();
+        this.mouseWorldPos = cc.v2(p.x, p.y);
     }
 
     private onMouseDown(e: cc.Event.EventMouse) {
         if (e.getButton() === cc.Event.EventMouse.BUTTON_LEFT) {
             this.isMouseDown = true;
             this.onMouseMove(e);
+            cc.log(`[BattleManager] 左鍵按下，滑鼠座標=(${this.mouseWorldPos.x.toFixed(0)}, ${this.mouseWorldPos.y.toFixed(0)})`);
         }
     }
 

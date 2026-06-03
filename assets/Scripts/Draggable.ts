@@ -20,6 +20,7 @@ export default class Draggable extends cc.Component {
     private assemblyArea: cc.Node | null = null;
     private partsLayer: cc.Node | null = null;
     private lastValidPos: cc.Vec2 = cc.v2(0, 0);
+    private hintGfx: cc.Graphics | null = null;   // 放置提示（綠=可放、紅=不可放）
 
     @property({ type: cc.Enum(PartType) })
     partType = PartType.Wheel;
@@ -73,9 +74,12 @@ export default class Draggable extends cc.Component {
         let delta = event.getDelta();
         this.node.x += delta.x;
         this.node.y += delta.y;
+        this.updateHint();
     }
 
     onDragEnd() {
+        this.clearHint();
+
         if (!this.assemblyArea || !this.partsLayer) {
             this.handleFailedDrop();
             return;
@@ -90,8 +94,8 @@ export default class Draggable extends cc.Component {
             let gridX = Math.floor(localPos.x / GRID.CELL_SIZE);
             let gridY = Math.floor(localPos.y / GRID.CELL_SIZE);
 
-            // 檢查該格子是否已有東西
-            if (this.isGridOccupied(gridX, gridY)) {
+            // 占用檢查 + 武器/輪子必須鄰接 Body 的規則
+            if (!this.canPlaceAt(gridX, gridY)) {
                 this.handleFailedDrop();
                 return;
             }
@@ -108,6 +112,73 @@ export default class Draggable extends cc.Component {
         } else {
             this.handleFailedDrop();
         }
+    }
+
+    // ---- 放置規則 ----
+    // 武器、輪子必須鄰接一個 Body/Core 才能放；Body、Core 只要格子空著即可。
+    private canPlaceAt(gx: number, gy: number): boolean {
+        if (this.isGridOccupied(gx, gy)) return false;
+        if (this.partType === PartType.Weapon || this.partType === PartType.Wheel) {
+            if (!this.hasAdjacentBody(gx, gy)) return false;
+        }
+        return true;
+    }
+
+    private hasAdjacentBody(gx: number, gy: number): boolean {
+        return this.bodyLikeAt(gx - 1, gy) || this.bodyLikeAt(gx + 1, gy)
+            || this.bodyLikeAt(gx, gy - 1) || this.bodyLikeAt(gx, gy + 1);
+    }
+
+    private bodyLikeAt(gx: number, gy: number): boolean {
+        if (!this.partsLayer) return false;
+        for (let p of this.partsLayer.children) {
+            if (p === this.node) continue;
+            const pgx = Math.floor(p.x / GRID.CELL_SIZE);
+            const pgy = Math.floor(p.y / GRID.CELL_SIZE);
+            if (pgx === gx && pgy === gy) {
+                const d = p.getComponent(Draggable);
+                if (d && (d.partType === PartType.Body || d.partType === PartType.Core)) return true;
+                if (cleanName(p.name) === "core") return true;
+                return false;   // 該格有東西但不是 Body → 不算鄰接 Body
+            }
+        }
+        return false;
+    }
+
+    // ---- 放置提示 ----
+    private ensureHint() {
+        if (this.hintGfx && this.hintGfx.node && this.hintGfx.node.isValid) return;
+        if (!this.partsLayer) return;
+        const n = new cc.Node("placeHint");
+        n.parent = this.partsLayer;
+        n.setPosition(0, 0);
+        n.zIndex = 50;
+        this.hintGfx = n.addComponent(cc.Graphics);
+    }
+
+    private updateHint() {
+        if (!this.assemblyArea) return;
+        this.ensureHint();
+        if (!this.hintGfx) return;
+
+        this.hintGfx.clear();
+
+        const worldPos = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
+        const localPos = this.assemblyArea.convertToNodeSpaceAR(worldPos);
+        const inGrid = localPos.x >= 0 && localPos.x <= GRID.AREA_MAX
+            && localPos.y >= 0 && localPos.y <= GRID.AREA_MAX;
+        if (!inGrid) return;
+
+        const gx = Math.floor(localPos.x / GRID.CELL_SIZE);
+        const gy = Math.floor(localPos.y / GRID.CELL_SIZE);
+        const ok = this.canPlaceAt(gx, gy);
+
+        this.hintGfx.fillColor = ok ? cc.color(80, 230, 120, 110) : cc.color(235, 80, 80, 110);
+        this.hintGfx.fillRect(gx * GRID.CELL_SIZE, gy * GRID.CELL_SIZE, GRID.CELL_SIZE, GRID.CELL_SIZE);
+    }
+
+    private clearHint() {
+        if (this.hintGfx) this.hintGfx.clear();
     }
 
     // 統一處理失敗的放置

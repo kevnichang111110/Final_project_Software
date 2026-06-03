@@ -134,4 +134,37 @@ export default class JointFactory {
         joint.maxMotorTorque = JOINT.MELEE_MAX_TORQUE;
         return joint;
     }
+
+    // 旋轉砲塔關節（滑鼠砲用）：以安裝時的朝向為中心，可在 ±halfArc 範圍內轉動瞄準。
+    static createTurretJoint(
+        weaponNode: cc.Node,
+        partMap: Map<string, cc.Node>,
+        x: number,
+        y: number,
+        halfArc: number,
+        torque: number
+    ): cc.RevoluteJoint | null {
+
+        let parentBox: cc.Node | null = null;
+        const coords = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+        for (const c of coords) {
+            const n = partMap.get(`${c[0]},${c[1]}`);
+            if (n && isBodyLikeNode(n)) { parentBox = n; break; }
+        }
+        if (!parentBox) return null;
+
+        const parentRb = parentBox.getComponent(cc.RigidBody);
+        const weaponRb = weaponNode.getComponent(cc.RigidBody);
+        if (!parentRb || !weaponRb) return null;
+
+        const worldPos = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
+        const joint = parentBox.addComponent(cc.RevoluteJoint);
+        joint.connectedBody = weaponRb;
+        joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
+        joint.connectedAnchor = weaponNode.convertToNodeSpaceAR(worldPos);
+        joint.enableLimit = false;     // 全 360 度自由瞄準（不限制角度 → 可朝任意方向、含向後）
+        joint.enableMotor = true;
+        joint.maxMotorTorque = torque;
+        return joint;
+    }
 }
