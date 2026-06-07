@@ -10,14 +10,13 @@
 
 declare const firebase: any;
 
-// ⬇⬇⬇ 換成你 Firebase 後台「專案設定 → 你的應用程式」給的設定 ⬇⬇⬇
-const FIREBASE_CONFIG = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID",
+const firebaseConfig = {
+  apiKey: "AIzaSyBdHqeN74jrRglDMcyybgPqkA45rYrzEAM",
+  authDomain: "ssdfinal-c6446.firebaseapp.com",
+  projectId: "ssdfinal-c6446",
+  storageBucket: "ssdfinal-c6446.firebasestorage.app",
+  messagingSenderId: "429751554635",
+  appId: "1:429751554635:web:cfdc5b61ece62bb65ef3ce"
 };
 // ⬆⬆⬆ ⬆⬆⬆
 
@@ -30,15 +29,19 @@ export default class FirebaseService {
     private static listeners: ((u: any) => void)[] = [];
 
     /** 在登入場景 / 排行榜場景的 onLoad 呼叫一次即可（重複呼叫安全） */
+   /** 在登入場景 / 排行榜場景的 onLoad 呼叫一次即可（重複呼叫安全） */
     static init() {
         if (this.inited) return;
+        
+        // 【修改】更新防呆警告文字，符合目前的插件作法
         if (typeof firebase === "undefined") {
-            cc.warn("[Firebase] 找不到 firebase：請確認 index.html 已載入 Firebase CDN <script>");
+            cc.warn("[Firebase] 找不到 firebase：請確認 firebase-compat.min.js 已放入專案並勾選為「導入為插件 (Import As Plugin)」");
             return;
         }
+        
         try {
             if (!firebase.apps || !firebase.apps.length) {
-                firebase.initializeApp(FIREBASE_CONFIG);
+                firebase.initializeApp(firebaseConfig); // 記得填寫你的 CONFIG
             }
             this.inited = true;
             firebase.auth().onAuthStateChanged((u: any) => {
