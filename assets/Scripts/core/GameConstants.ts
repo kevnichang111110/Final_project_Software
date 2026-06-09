@@ -171,3 +171,31 @@ export const WALLRIDE = {
     DETACH_SPIN: 1200,    // 脫離時的翻轉角衝量
     DETACH_TIME: 0.5,     // 脫離後多久內不重新吸附（讓它飛出去）
 };
+
+// 打擊感特效（HitFeedback：鏡頭震動 + 縮放衝擊 + 火花 + hitstop）
+// 所有強度依「傷害量」比例縮放：輕擦小晃、重擊大震。手感調校的旋鈕都集中在這。
+export const HITFX = {
+    MIN_DAMAGE: 2,            // 低於此傷害完全不觸發任何回饋（避免持續小擦撞抖個不停）
+
+    // 鏡頭震動（trauma 模型：受擊累加 trauma，每幀衰減，位移 = shake^2）
+    SHAKE_PER_DAMAGE: 0.06,  // 每點傷害換算的 trauma 增量（0~1）
+    SHAKE_MAX_TRAUMA: 0.9,   // 單次累加後 trauma 上限
+    SHAKE_MAX_OFFSET: 24,    // trauma=1 時的最大位移（px）
+    SHAKE_MAX_ANGLE: 2.5,    // trauma=1 時的最大旋轉（度）
+    SHAKE_DECAY: 1.8,        // trauma 每秒衰減量
+    SHAKE_FREQ: 28,          // 抖動頻率（越高越「銳」）
+
+    // 鏡頭縮放衝擊（zoom punch）：重擊才明顯。zoomRatio 變大 = 拉近
+    ZOOM_PER_DAMAGE: 0.004,  // 每點傷害換算的 zoom 增量
+    ZOOM_MAX: 0.12,          // zoom 衝擊上限
+    ZOOM_IN_TIME: 0.05,      // 拉近時間（快）
+    ZOOM_OUT_TIME: 0.18,     // 回復時間（慢）
+
+    // hitstop（短暫慢動作）：只有大擊／爆破
+    HITSTOP_DAMAGE: 22,      // finalDmg 超過此值才觸發
+    HITSTOP_SCALE: 0.08,     // 慢動作時的 timeScale
+    HITSTOP_TIME: 0.06,      // 慢動作持續秒數（真實時間）
+
+    // 撞擊火花（HitSpark）
+    SPARK_MIN_DAMAGE: 4,     // 低於此傷害不噴火花
+};

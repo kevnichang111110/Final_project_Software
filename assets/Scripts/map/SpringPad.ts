@@ -1,6 +1,8 @@
 // map/SpringPad.ts
 // 彈簧墊物件：當動態剛體（車子）踩到時，給予向上的巨大衝量彈飛。
 
+import HitFeedback from "../fx/HitFeedback";
+
 const { ccclass, property } = cc._decorator;
 
 @ccclass
@@ -39,6 +41,9 @@ export default class SpringPad extends cc.Component {
             if (this.bounceSfx) {
                 cc.audioEngine.playEffect(this.bounceSfx, false);
             }
+
+            // 3. 打擊感回饋：彈跳給中等鏡頭晃動（低於 hitstop 門檻，不會慢動作）
+            HitFeedback.trigger(8, otherRb.getWorldCenter());
         }
     }
 

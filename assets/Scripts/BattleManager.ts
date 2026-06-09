@@ -17,6 +17,7 @@ import StuckRescue from "./battle/StuckRescue";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
 import MapLoader from "./map/MapLoader";
+import HitFeedback from "./fx/HitFeedback";
 
 const { ccclass, property } = cc._decorator;
 
@@ -101,6 +102,9 @@ export default class BattleManager extends cc.Component {
         (physics as any).velocityIterations = PHYSICS.VELOCITY_ITERATIONS;
         (physics as any).positionIterations = PHYSICS.POSITION_ITERATIONS;
 
+        // 打擊感回饋：把 HitFeedback 動態掛到主鏡頭節點（免去在 .fire 編輯器手動綁定）
+        this.setupHitFeedback();
+
         this.createScoreboard();
         this.setupBattle();
 
@@ -125,6 +129,17 @@ export default class BattleManager extends cc.Component {
             mouseTarget.off(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this, true);
             mouseTarget.off(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this, true);
             mouseTarget.off(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this, true);
+        }
+    }
+
+    // ====================================================================
+    // 打擊感回饋：把 HitFeedback 掛到主鏡頭節點。動態掛載避免動到 game.fire。
+    // ====================================================================
+    private setupHitFeedback() {
+        const cam = cc.Camera.main;
+        if (!cam || !cam.node) return;
+        if (!cam.node.getComponent(HitFeedback)) {
+            cam.node.addComponent(HitFeedback);
         }
     }
 
