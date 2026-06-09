@@ -224,7 +224,9 @@ export default class BattleManager extends cc.Component {
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
-        this.playerRescue = FLOW.USE_STUCK_RESCUE ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
+        this.playerRescue = FLOW.USE_STUCK_RESCUE
+            ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
+            : null;
         this.detachPressed = false;
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
@@ -262,7 +264,9 @@ export default class BattleManager extends cc.Component {
                 onCoreDie: (winner) => this.handleGameOver(winner),
             });
             this.botAI = new BotAI(this.botCar, this.botGunFireInterval);
-            this.botRescue = FLOW.USE_STUCK_RESCUE ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART) : null;
+            this.botRescue = FLOW.USE_STUCK_RESCUE
+                ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART, this.coreWorldPos(this.botCar) || cc.v2(0, 0))
+                : null;
         }
     }
 

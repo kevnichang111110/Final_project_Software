@@ -44,8 +44,8 @@ export const BATTLE = {
 export const JOINT = {
     WHEEL_FREQUENCY: 10,
     WHEEL_MAX_TORQUE: 400000,
-    WHEEL_TARGET_SPEED: -600,   // 玩家輪子目標馬達速度（乘上 moveDir）
-    WHEEL_SMOOTHING: 0.15,      // 輪速插值平滑
+    WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
+    WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）
     WELD_FREQUENCY: 0,
     MELEE_MAX_TORQUE: 10000,
     MELEE_ATTACK_SPEED: 1500,   // 玩家近戰揮出
@@ -120,7 +120,7 @@ export const SCRAMBLE = {
 export const FLOW = {
     USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
-    USE_WALLRIDE: false,      // 牆面行駛：預設關閉。等你做好環形賽道、要測爬牆時再設 true
+    USE_WALLRIDE: true,       // 牆面行駛：開啟才爬得了牆（關閉時玩家碰到牆只會滑下來）
     USE_STUCK_RESCUE: true,   // 卡住自救：車子想動卻動不了一段時間後，自動瞬移到最近可站的位置
 };
 
@@ -135,6 +135,7 @@ export const RESCUE = {
     UP_PROBE: 40,         // 候選點往上一點當射線起點（避免起點剛好埋在地裡）
     CLEARANCE: 24,        // 站定後離地面的額外淨空
     COOLDOWN: 1.2,        // 兩次救援之間的冷卻（秒），避免連續瞬移
+    ENCLOSE_PROBE: 4000,  // 判斷「是否在封閉場內」時四方向射線長度（要大於整張圖）
 };
 
 // 近戰揮砍冷卻

@@ -22,37 +22,39 @@ const { ccclass, property } = cc._decorator;
 export default class ArenaBoundaryGenerator extends cc.Component {
     // ---- 基本場地尺寸（超橢圓：可在「橢圓 ↔ 長方形」之間調）----
     @property({ tooltip: "場地水平半寬" })
-    baseRadiusX: number = 640;
+    baseRadiusX: number = 660;
     @property({ tooltip: "場地垂直半高" })
-    baseRadiusY: number = 360;
-    @property({ tooltip: "形狀方正度：2 = 橢圓；越大越像長方形（圓角矩形）。建議 4~8" })
-    rectSharpness: number = 5;
+    baseRadiusY: number = 380;
+    @property({ tooltip: "形狀方正度：2 = 橢圓；越大越像長方形（圓角矩形）。建議 3~6" })
+    rectSharpness: number = 4;
     @property({ tooltip: "整圈點數：越多越平滑、越吃效能" })
-    segments: number = 140;
+    segments: number = 200;
+    @property({ tooltip: "輪廓平滑次數：把突起磨成圓滑小土丘（0 = 不平滑）" })
+    smoothPasses: number = 2;
 
-    // ---- 隨機向內突起 (bump) ----
+    // ---- 隨機向內突起 (bump，小土丘) ----
     @property({ tooltip: "最少突起數" })
-    minBumps: number = 4;
+    minBumps: number = 2;
     @property({ tooltip: "最多突起數" })
-    maxBumps: number = 7;
+    maxBumps: number = 4;
     @property({ tooltip: "突起向內凸出的最小深度 (px)" })
-    bumpMinHeight: number = 60;
-    @property({ tooltip: "突起向內凸出的最大深度 (px)" })
-    bumpMaxHeight: number = 160;
-    @property({ tooltip: "單個突起的最小角寬 (度)，越大斜坡越緩、越好騎" })
-    bumpMinWidthDeg: number = 22;
+    bumpMinHeight: number = 25;
+    @property({ tooltip: "突起向內凸出的最大深度 (px)，太大會吃掉中間遊玩空間" })
+    bumpMaxHeight: number = 70;
+    @property({ tooltip: "單個突起的最小角寬 (度)，越大土丘越寬越緩、越好騎" })
+    bumpMinWidthDeg: number = 40;
     @property({ tooltip: "單個突起的最大角寬 (度)" })
-    bumpMaxWidthDeg: number = 50;
+    bumpMaxWidthDeg: number = 80;
 
     // ---- 視覺：牆與牆外虛空 ----
     @property({ tooltip: "邊界牆的視覺厚度 (深灰色帶)" })
-    wallThickness: number = 40;
+    wallThickness: number = 22;
     @property({ tooltip: "牆外淺灰色虛空往外延伸多遠（要夠大才能蓋滿畫面外側）" })
     voidExtend: number = 2000;
     @property({ tooltip: "邊界牆顏色（深灰）" })
     boundaryColor: cc.Color = cc.color(58, 60, 66);
-    @property({ tooltip: "牆外虛空顏色（淺灰）" })
-    voidColor: cc.Color = cc.color(205, 209, 214);
+    @property({ tooltip: "牆外虛空顏色（灰）" })
+    voidColor: cc.Color = cc.color(165, 172, 181);
     @property({ tooltip: "視覺節點的 zIndex（越小越在底層，避免擋住車子）" })
     visualZIndex: number = -10;
 
@@ -175,7 +177,24 @@ export default class ArenaBoundaryGenerator extends cc.Component {
             const scale = Math.max(0.2, (r - inset) / r);
             pts.push(cc.v2(px * scale, py * scale));
         }
-        return pts;
+
+        return this.smooth(pts, this.smoothPasses);
+    }
+
+    // 對封閉折線做數次鄰點平均：把尖刺磨成圓滑小土丘（保留整體形狀）
+    private smooth(pts: cc.Vec2[], passes: number): cc.Vec2[] {
+        const n = pts.length;
+        let cur = pts;
+        for (let p = 0; p < passes; p++) {
+            const next: cc.Vec2[] = [];
+            for (let i = 0; i < n; i++) {
+                const a = cur[(i - 1 + n) % n], b = cur[i], c = cur[(i + 1) % n];
+                // b 與左右鄰點各取一半權重平均（0.5 中心 + 0.25/0.25 鄰點）
+                next.push(cc.v2(b.x * 0.5 + (a.x + c.x) * 0.25, b.y * 0.5 + (a.y + c.y) * 0.25));
+            }
+            cur = next;
+        }
+        return cur;
     }
 
     // 兩個角度的最短角距 [0, PI]

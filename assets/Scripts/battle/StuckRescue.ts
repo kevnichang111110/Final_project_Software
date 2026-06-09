@@ -13,15 +13,17 @@ export default class StuckRescue {
     private root: cc.Node;
     private partGroup: string;
     private coreNode: cc.Node | null;
+    private homePos: cc.Vec2;   // 出生點（保證在場內）：找不到站位時的最後退路
 
     private lastPos: cc.Vec2 | null = null;
     private noProgress = 0;   // 累積「沒前進」的時間
     private cooldown = 0;     // 救援後的冷卻
 
-    constructor(car: BuiltCar, root: cc.Node, partGroup: string) {
+    constructor(car: BuiltCar, root: cc.Node, partGroup: string, homeWorld: cc.Vec2) {
         this.root = root;
         this.partGroup = partGroup;
         this.coreNode = car.coreNode;
+        this.homePos = cc.v2(homeWorld.x, homeWorld.y);
     }
 
     update(dt: number, isTrying: boolean, avoidPos?: cc.Vec2 | null) {
@@ -78,9 +80,9 @@ export default class StuckRescue {
         return r;
     }
 
-    // 從目前位置往外一圈圈找「腳下有地、頭上沒牆、不在對手身上」的站位，回傳核心要去的世界座標
+    // 從目前位置往外一圈圈找「在場內、腳下有地、頭上沒牆、不在對手身上」的站位。
+    // 由近到遠搜尋；都找不到就退回出生點（保證在場內）。回傳核心要去的世界座標。
     private findStandable(fromWorld: cc.Vec2, avoidPos?: cc.Vec2 | null): cc.Vec2 | null {
-        const pm = cc.director.getPhysicsManager();
         const cr = this.carRadius(fromWorld);
         const lift = cr + RESCUE.CLEARANCE;
         const step = Math.max(RESCUE.SEARCH_STEP, cr * 1.2);
@@ -91,37 +93,55 @@ export default class StuckRescue {
                 const ang = (a / RESCUE.SEARCH_SAMPLES) * Math.PI * 2;
                 const cx = fromWorld.x + Math.cos(ang) * radius;
                 const cy = fromWorld.y + Math.sin(ang) * radius;
-
-                // 往下打射線找最高的地面（group default / boundary）
-                const top = cc.v2(cx, cy + RESCUE.UP_PROBE);
-                const bottom = cc.v2(cx, cy - RESCUE.DOWN_PROBE);
-                const hits = pm.rayCast(top, bottom, cc.RayCastType.All);
-                let floorY: number | null = null;
-                for (const h of hits) {
-                    const g = h.collider.node.group;
-                    if (g !== GROUP.DEFAULT && g !== GROUP.BOUNDARY) continue;
-                    if (floorY === null || h.point.y > floorY) floorY = h.point.y;
-                }
-                if (floorY === null) continue;
-
-                const standY = floorY + lift;
-
-                // 頭上要有淨空（別塞進牆裡/天花板）：往上短射線不該馬上撞到邊界
-                const up = pm.rayCast(cc.v2(cx, standY), cc.v2(cx, standY + cr + RESCUE.CLEARANCE), cc.RayCastType.Closest);
-                let blocked = false;
-                for (const h of up) {
-                    const g = h.collider.node.group;
-                    if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) { blocked = true; break; }
-                }
-                if (blocked) continue;
-
-                // 別瞬移到對手身上
-                if (avoidPos && Math.hypot(cx - avoidPos.x, standY - avoidPos.y) < cr * 2) continue;
-
-                return cc.v2(cx, standY);
+                const spot = this.evalStandSpot(cx, cy, cr, lift, avoidPos);
+                if (spot) return spot;
             }
         }
-        return null;
+
+        // 退路：出生點一定在場內，直接在它正下方找地面站定
+        return this.evalStandSpot(this.homePos.x, this.homePos.y, cr, lift, null);
+    }
+
+    // 檢驗單一 (cx, cy) 是否為合法站位；合法則回傳「核心要去的世界座標」，否則 null
+    private evalStandSpot(cx: number, cy: number, cr: number, lift: number, avoidPos?: cc.Vec2 | null): cc.Vec2 | null {
+        const pm = cc.director.getPhysicsManager();
+
+        // 往下打射線找最高的地面（group default / boundary）
+        const hits = pm.rayCast(cc.v2(cx, cy + RESCUE.UP_PROBE), cc.v2(cx, cy - RESCUE.DOWN_PROBE), cc.RayCastType.All);
+        let floorY: number | null = null;
+        for (const h of hits) {
+            const g = h.collider.node.group;
+            if (g !== GROUP.DEFAULT && g !== GROUP.BOUNDARY) continue;
+            if (floorY === null || h.point.y > floorY) floorY = h.point.y;
+        }
+        if (floorY === null) return null;
+
+        const standY = floorY + lift;
+
+        // 必須在封閉場內（避免瞬移到邊界外）
+        if (!this.isEnclosed(cc.v2(cx, standY))) return null;
+
+        // 頭上要有淨空（別塞進牆裡/天花板）
+        const up = pm.rayCast(cc.v2(cx, standY), cc.v2(cx, standY + cr + RESCUE.CLEARANCE), cc.RayCastType.All);
+        if (up.some(h => h.collider.node.group === GROUP.DEFAULT || h.collider.node.group === GROUP.BOUNDARY)) return null;
+
+        // 別瞬移到對手身上
+        if (avoidPos && Math.hypot(cx - avoidPos.x, standY - avoidPos.y) < cr * 2) return null;
+
+        return cc.v2(cx, standY);
+    }
+
+    // 是否在封閉場內：往上下左右四個方向打長射線，全部都撞到邊界才算「被牆圍住」
+    private isEnclosed(p: cc.Vec2): boolean {
+        const pm = cc.director.getPhysicsManager();
+        const L = RESCUE.ENCLOSE_PROBE;
+        const dirs = [cc.v2(L, 0), cc.v2(-L, 0), cc.v2(0, L), cc.v2(0, -L)];
+        for (const d of dirs) {
+            const hits = pm.rayCast(p, cc.v2(p.x + d.x, p.y + d.y), cc.RayCastType.All);
+            const wall = hits.some(h => h.collider.node.group === GROUP.DEFAULT || h.collider.node.group === GROUP.BOUNDARY);
+            if (!wall) return false;   // 有一個方向能直接逃出去 → 在場外
+        }
+        return true;
     }
 
     // 把整台車當「剛體」搬移：對每個零件套用同一個 (旋轉到水平 + 位移到目標) 的剛體變換。
