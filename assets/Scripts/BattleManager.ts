@@ -84,6 +84,7 @@ export default class BattleManager extends cc.Component {
     private wallRide: WallRide | null = null;
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
+    private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
 
     // 記分板
     private playerScoreLabel: cc.Label | null = null;
@@ -332,7 +333,7 @@ export default class BattleManager extends cc.Component {
         this.updatePlayerMovement();
         this.updateStuckRescue(dt);
         const touching = this.isTouchingAnything();   // 每幀算一次，翻滾與翻正共用
-        if (this.wallRide) this.wallRide.update(dt, this.moveDir);
+        if (this.wallRide) this.wallRide.update(dt);
         this.updateAirRotation(touching);   // 只有完全騰空（無接觸）才翻滾
         this.updateAutoRight(touching);     // 接觸地面且傾斜 → 自動翻正
         this.updateJet();
@@ -479,11 +480,12 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 自動翻正：接觸地面/物體、且不在牆面行駛、且車身傾斜時，施加修正扭矩回到直立。
+    // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。
+    // 牆/斜面交給 WallRide 對齊；在地面小傾斜時不介入，避免兩套對齊力互打造成亂彈。
     private updateAutoRight(touching: boolean) {
-        if (!UPRIGHT.ENABLED || !touching) return;
-        if (!this.playerCar || !this.playerCar.coreNode) return;
-        if (this.wallRide && this.wallRide.isStuck()) return;   // 牆上交給 WallRide 對齊
+        if (!UPRIGHT.ENABLED || !touching) { this.righting = false; return; }
+        if (!this.playerCar || !this.playerCar.coreNode) { this.righting = false; return; }
+        if (this.wallRide && this.wallRide.isEngaged()) { this.righting = false; return; }
         const core = this.playerCar.coreNode;
         const rb = core.getComponent(cc.RigidBody);
         if (!rb) return;
@@ -492,7 +494,12 @@ export default class BattleManager extends cc.Component {
         let ang = core.angle % 360;
         if (ang > 180) ang -= 360;
         if (ang < -180) ang += 360;
-        if (Math.abs(ang) < UPRIGHT.MIN_ANGLE) return;
+
+        // 遲滯：傾角夠大才啟動，修正到夠小才關閉
+        const mag = Math.abs(ang);
+        if (mag > UPRIGHT.TRIGGER_ANGLE) this.righting = true;
+        else if (mag < UPRIGHT.RELEASE_ANGLE) this.righting = false;
+        if (!this.righting) return;
 
         let torque = (-ang * UPRIGHT.GAIN) - rb.angularVelocity * UPRIGHT.DAMP;
         torque = cc.misc.clampf(torque, -UPRIGHT.MAX_TORQUE, UPRIGHT.MAX_TORQUE);
