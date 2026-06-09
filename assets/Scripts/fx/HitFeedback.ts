@@ -3,109 +3,98 @@
 //
 // 提供 static 介面，任何 gameplay 程式碼一行即可觸發，強度依傷害量比例縮放：
 //   HitFeedback.trigger(damage, worldPos?)
-//     - 鏡頭震動：用 zoomRatio 快速忽近忽遠的脈動呈現（trauma 模型，逐幀衰減）。
-//       為什麼不用移動相機節點：主鏡頭 alignWithScreen 開著時會強制對齊螢幕、忽略節點 transform，
-//       移動節點不是無效就是把視野弄壞（畫面變超大）。zoomRatio 在對齊模式下仍有效，最安全。
-//     - 受擊染紅濾鏡（HitFlash 全螢幕覆蓋）
+//     - 震動：位移「背景節點(Canvas/bg)」呈現（trauma 模型，逐幀衰減）。
+//       為什麼不移動相機：主鏡頭 alignWithScreen 開著時會強制對齊螢幕、忽略節點 transform，
+//       移動相機節點不是無效就是把視野弄壞。背景是純 Sprite（無 Widget、無物理），位移它最安全且明顯。
 //     - 撞擊火花（HitSpark，需 worldPos）
 //     - hitstop（大擊才有：短暫降低 scheduler timeScale 製造慢動作）
 //
 // 非戰鬥場景（沒有實例）時所有 static 呼叫皆安全 no-op。
+// 想加入更多一起震動的節點，往 SHAKE_NODE_PATHS 加路徑即可（須為非物理的純視覺節點）。
 
 import { HITFX } from "../core/GameConstants";
 import HitSpark from "./HitSpark";
 
 const { ccclass } = cc._decorator;
 
+// 要一起震動的視覺節點路徑（相對場景根）。背景全螢幕、純 Sprite，位移它最安全又明顯。
+const SHAKE_NODE_PATHS = ["Canvas/bg"];
+// 把震動節點稍微放大，留出位移餘裕，避免抖動時露出邊緣黑邊（背景常常剛好等於畫面大小）。
+const SHAKE_OVERSCALE = 1.15;
+
 @ccclass
 export default class HitFeedback extends cc.Component {
     private static instance: HitFeedback | null = null;
-
-    private camera: cc.Camera | null = null;
-    private baseZoom: number = 1;
 
     private trauma: number = 0;
     private elapsed: number = 0;          // 抖動相位用的時間累加器
     private hitstopActive: boolean = false;
 
-    private flashNode: cc.Node | null = null;   // 全螢幕受擊染紅濾鏡
+    // 被震動的節點與其基準位置／縮放（震動是「基準位置 + 位移」，結束後歸位）
+    private shakeNodes: cc.Node[] = [];
+    private shakeBase: cc.Vec2[] = [];
+    private shakeBaseScale: number[] = [];
 
     onLoad() {
         HitFeedback.instance = this;
-        this.camera = this.getComponent(cc.Camera);
-        if (this.camera) this.baseZoom = this.camera.zoomRatio;
-        // 不動 alignWithScreen：維持原本對齊螢幕的正確視野。
-        this.createFlashOverlay();
+        for (const p of SHAKE_NODE_PATHS) {
+            const n = cc.find(p);
+            if (!n) continue;
+            this.shakeNodes.push(n);
+            this.shakeBase.push(n.getPosition());
+            this.shakeBaseScale.push(n.scale);
+            n.scale = n.scale * SHAKE_OVERSCALE;   // 放大留位移餘裕，避免露邊
+        }
     }
 
     onDestroy() {
         if (HitFeedback.instance === this) HitFeedback.instance = null;
-        if (this.camera) this.camera.zoomRatio = this.baseZoom;   // 還原縮放
-        if (this.hitstopActive) {                                 // 保險：還原時間倍率
+        for (let i = 0; i < this.shakeNodes.length; i++) {
+            const n = this.shakeNodes[i];
+            if (n && n.isValid) { n.setPosition(this.shakeBase[i]); n.scale = this.shakeBaseScale[i]; }
+        }
+        if (this.hitstopActive) {                 // 保險：還原時間倍率
             cc.director.getScheduler().setTimeScale(1);
             this.hitstopActive = false;
         }
     }
 
-    // 全螢幕紅色濾鏡（掛在 Canvas 下、超大尺寸、最高 zIndex），受擊時短暫染紅
-    private createFlashOverlay() {
-        const parent = this.node.parent;   // Canvas（相機的父層，螢幕空間置中）
-        if (!parent) return;
-
-        const node = new cc.Node("HitFlash");
-        node.parent = parent;
-        node.setPosition(0, 0);
-        node.zIndex = cc.macro.MAX_ZINDEX;  // 蓋在所有遊戲物件與 HUD 之上
-        node.opacity = 0;
-
-        const g = node.addComponent(cc.Graphics);
-        const w = cc.winSize.width * 1.8;
-        const h = cc.winSize.height * 1.8;
-        g.fillColor = cc.color(HITFX.FLASH_COLOR_R, HITFX.FLASH_COLOR_G, HITFX.FLASH_COLOR_B, 255);
-        g.rect(-w / 2, -h / 2, w, h);
-        g.fill();
-
-        this.flashNode = node;
+    private restoreShakeNodes() {
+        for (let i = 0; i < this.shakeNodes.length; i++) {
+            const n = this.shakeNodes[i];
+            if (n && n.isValid) n.setPosition(this.shakeBase[i]);
+        }
     }
 
     update(dt: number) {
-        if (!this.camera) return;
-
-        if (this.trauma <= 0) {
-            if (this.camera.zoomRatio !== this.baseZoom) this.camera.zoomRatio = this.baseZoom;
-            return;
-        }
+        if (this.trauma <= 0) return;
 
         this.elapsed += dt;
         this.trauma = Math.max(0, this.trauma - HITFX.SHAKE_DECAY * dt);
 
-        // 震動 = zoomRatio 快速忽近忽遠的脈動，幅度依 trauma^2 衰減
+        if (this.trauma <= 0) { this.restoreShakeNodes(); return; }
+
+        // 位移幅度 = trauma^2，收尾更柔順；X/Y 用不同相位讓抖動更自然
         const s = this.trauma * this.trauma;
-        const wob = this.noise(this.elapsed * HITFX.SHAKE_FREQ) * s * HITFX.SHAKE_ZOOM_AMP;
-        this.camera.zoomRatio = this.baseZoom * (1 + wob);
+        const t = this.elapsed * HITFX.SHAKE_FREQ;
+        const ox = HITFX.SHAKE_MAX_OFFSET * s * this.noise(t, 12.9898);
+        const oy = HITFX.SHAKE_MAX_OFFSET * s * this.noise(t, 78.2330);
+
+        for (let i = 0; i < this.shakeNodes.length; i++) {
+            const n = this.shakeNodes[i];
+            if (n && n.isValid) n.setPosition(this.shakeBase[i].x + ox, this.shakeBase[i].y + oy);
+        }
     }
 
     // 確定性偽隨機 [-1,1]
-    private noise(t: number): number {
-        const v = Math.sin(t * 12.9898) * 43758.5453;
+    private noise(t: number, seed: number): number {
+        const v = Math.sin(t * seed) * 43758.5453;
         return (v - Math.floor(v)) * 2 - 1;
     }
 
     // ===== 實例方法 =====
     addTrauma(amount: number) {
         this.trauma = Math.min(HITFX.SHAKE_MAX_TRAUMA, this.trauma + amount);
-    }
-
-    flash(alpha01: number) {
-        if (!this.flashNode || !this.flashNode.isValid) return;
-        const peak = Math.round(Math.min(HITFX.FLASH_MAX_ALPHA, alpha01) * 255);
-        if (peak <= 0) return;
-        cc.Tween.stopAllByTarget(this.flashNode);
-        this.flashNode.opacity = 0;
-        cc.tween(this.flashNode)
-            .to(HITFX.FLASH_IN_TIME, { opacity: peak })
-            .to(HITFX.FLASH_OUT_TIME, { opacity: 0 })
-            .start();
     }
 
     hitstop(scale: number, time: number) {
@@ -125,10 +114,6 @@ export default class HitFeedback extends cc.Component {
         if (!inst || damage < HITFX.MIN_DAMAGE) return;
 
         inst.addTrauma(Math.min(HITFX.SHAKE_MAX_TRAUMA, damage * HITFX.SHAKE_PER_DAMAGE));
-
-        if (damage >= HITFX.FLASH_MIN_DAMAGE) {
-            inst.flash(damage * HITFX.FLASH_PER_DAMAGE);
-        }
 
         if (damage >= HITFX.HITSTOP_DAMAGE) {
             inst.hitstop(HITFX.HITSTOP_SCALE, HITFX.HITSTOP_TIME);

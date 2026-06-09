@@ -82,12 +82,11 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    // 空中旋轉改為「速度控制」：A/D 把角速度開向 ±SPIN_TARGET；沒按鍵則開向 0（＝阻尼）。
-    // 這樣按鍵轉得明顯可控，且被彈簧/擠壓打出的瘋狂高速自旋也會被主動煞回來，不會一直亂轉。
-    ROTATE_TORQUE: 220000,    // 每幀施加扭矩的上限（控制力道）
-    ROTATE_GAIN: 3000,        // 速度誤差 × 此值 = 扭矩（愈大反應愈快、煞得愈猛）
-    SPIN_TARGET: 220,         // 按住 A/D 時想達到的旋轉角速度（度/秒）
-    MAX_ANGULAR_SPEED: 80,    // （已停用，保留避免外部引用）
+    // 空中旋轉：直接「控制角速度」而非施加扭矩。每幀把核心角速度以 SPIN_ACCEL 的步進開向目標：
+    // 按 A/D → 目標 ±SPIN_TARGET（度/秒）；沒按 → 目標 0（自然停轉）。
+    // 直接設角速度＋步進限制 → 絕不過衝、絕不發散，被彈飛打出的瘋狂自旋也會被穩定收回，完全可控。
+    SPIN_TARGET: 200,         // 按住 A/D 想達到的旋轉角速度（度/秒），越大轉越快
+    SPIN_ACCEL: 1100,         // 角速度每秒可變化量（度/秒²），越大反應越快（也越生硬）
     GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
     CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
 };
@@ -191,18 +190,18 @@ export const WALLRIDE = {
     SLIDE: 0.35,          // 保留多少「沿牆方向」的重力（0=完全黏死不滑、1=完全自然下滑）。不主動爬時會自然沿牆下滑
 };
 
-// 打擊感特效（HitFeedback：鏡頭震動 + 縮放衝擊 + 火花 + hitstop）
+// 打擊感特效（HitFeedback：背景震動 + 火花 + hitstop）
 // 所有強度依「傷害量」比例縮放：輕擦小晃、重擊大震。手感調校的旋鈕都集中在這。
 export const HITFX = {
     MIN_DAMAGE: 2,            // 低於此傷害完全不觸發任何回饋（避免持續小擦撞抖個不停）
 
-    // 鏡頭震動（trauma 模型：受擊累加 trauma，每幀衰減）。
-    // 註：主鏡頭 alignWithScreen 開著時移動節點無效（會把視野弄壞），所以震動改用 zoomRatio 快速抖動呈現。
-    SHAKE_PER_DAMAGE: 0.06,  // 每點傷害換算的 trauma 增量（0~1）
-    SHAKE_MAX_TRAUMA: 0.9,   // 單次累加後 trauma 上限
-    SHAKE_DECAY: 1.8,        // trauma 每秒衰減量
-    SHAKE_FREQ: 34,          // 抖動頻率（越高越「銳」）
-    SHAKE_ZOOM_AMP: 0.06,    // trauma=1 時 zoomRatio 抖動幅度（±比例）。震動就是靠這個忽近忽遠的脈動
+    // 震動（trauma 模型：受擊累加 trauma，每幀衰減，位移幅度 = trauma^2）。
+    // 主鏡頭 alignWithScreen 開著時移動相機節點無效，所以改成「位移背景節點 (Canvas/bg)」來呈現震動。
+    SHAKE_PER_DAMAGE: 0.07,  // 每點傷害換算的 trauma 增量（0~1）
+    SHAKE_MAX_TRAUMA: 1.0,   // 單次累加後 trauma 上限
+    SHAKE_MAX_OFFSET: 36,    // trauma=1 時背景的最大位移（px），越大震越明顯
+    SHAKE_DECAY: 2.4,        // trauma 每秒衰減量（越大收得越快）
+    SHAKE_FREQ: 40,          // 抖動頻率（越高越「銳」）
 
     // hitstop（短暫慢動作）：只有大擊／爆破
     HITSTOP_DAMAGE: 22,      // finalDmg 超過此值才觸發
@@ -211,14 +210,4 @@ export const HITFX = {
 
     // 撞擊火花（HitSpark）
     SPARK_MIN_DAMAGE: 4,     // 低於此傷害不噴火花
-
-    // 受擊濾鏡（全螢幕紅色閃光 + 邊角暗角 vignette；模擬「受傷」的鏡頭染色）
-    FLASH_MIN_DAMAGE: 6,     // 低於此傷害不染紅
-    FLASH_PER_DAMAGE: 0.012, // 每點傷害換算的紅色不透明度
-    FLASH_MAX_ALPHA: 0.45,   // 紅色染色不透明度上限（0~1）
-    FLASH_IN_TIME: 0.04,     // 染紅時間（快）
-    FLASH_OUT_TIME: 0.32,    // 退去時間（慢）
-    FLASH_COLOR_R: 200,      // 染色 RGB（偏暗紅，避免過曝）
-    FLASH_COLOR_G: 30,
-    FLASH_COLOR_B: 30,
 };

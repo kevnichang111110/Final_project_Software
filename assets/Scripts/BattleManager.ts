@@ -334,8 +334,8 @@ export default class BattleManager extends cc.Component {
         this.updateStuckRescue(dt);
         const touching = this.isTouchingAnything();   // 每幀算一次，翻滾與翻正共用
         if (this.wallRide) this.wallRide.update(dt);
-        this.updateAirRotation(touching);   // 只有完全騰空（無接觸）才翻滾
-        this.updateAutoRight(touching);     // 接觸地面且傾斜 → 自動翻正
+        this.updateAirRotation(touching, dt);   // 只有完全騰空（無接觸）才翻滾
+        this.updateAutoRight(touching);         // 接觸地面且傾斜 → 自動翻正
         this.updateJet();
         this.updatePlayerMelee(dt);
     }
@@ -470,17 +470,18 @@ export default class BattleManager extends cc.Component {
 
     // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
     // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
-    private updateAirRotation(touching: boolean) {
+    private updateAirRotation(touching: boolean, dt: number) {
         if (!this.playerCar || !this.playerCar.coreNode) return;
         if (touching) return;   // 有接觸 → 不翻滾（也不介入旋轉）
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
 
-        // 速度控制：把角速度開向目標（按鍵 → ±SPIN_TARGET；沒按 → 0，等於把亂轉煞回來）
+        // 直接控制角速度：以 SPIN_ACCEL 的步進開向目標，絕不過衝、不發散。
+        // 按鍵 → ±SPIN_TARGET；沒按 → 0（把亂轉穩定收回）。
         const target = this.moveDir * AIR.SPIN_TARGET;
-        let torque = (target - rb.angularVelocity) * AIR.ROTATE_GAIN;
-        torque = cc.misc.clampf(torque, -AIR.ROTATE_TORQUE, AIR.ROTATE_TORQUE);
-        (rb as any).applyTorque(torque, true);
+        const cur = rb.angularVelocity;
+        const maxStep = AIR.SPIN_ACCEL * dt;
+        rb.angularVelocity = cur + cc.misc.clampf(target - cur, -maxStep, maxStep);
     }
 
     // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。
