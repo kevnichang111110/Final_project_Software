@@ -16,6 +16,7 @@ import WallRide from "./battle/WallRide";
 import StuckRescue from "./battle/StuckRescue";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
+import MapLoader from "./map/MapLoader";
 
 const { ccclass, property } = cc._decorator;
 
@@ -29,6 +30,9 @@ export default class BattleManager extends cc.Component {
     @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
     @property(cc.Prefab) settingsPrefab: cc.Prefab | null = null;
     @property(cc.Label) resultLabel: cc.Label | null = null;
+
+    // 預設地圖載入器（選填）：拉進來就會在每次開局重新隨機挑一張地圖；留空則由 MapLoader 自己在 start() 載入第一張
+    @property(MapLoader) mapLoader: MapLoader | null = null;
 
     @property(cc.AudioClip) bgmClip: cc.AudioClip | null = null;
     @property(cc.AudioClip) suddenDeathSfx: cc.AudioClip | null = null;
@@ -223,6 +227,9 @@ export default class BattleManager extends cc.Component {
             prefabs: this.allPrefabs,
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
+        // 玩家車已建好 → 重新挑一張預設地圖（避免車的物件壓在玩家身上）
+        if (this.mapLoader) this.mapLoader.loadRandomMap();
+
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
         this.playerRescue = FLOW.USE_STUCK_RESCUE
             ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
