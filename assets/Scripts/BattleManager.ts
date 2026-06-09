@@ -8,7 +8,7 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
@@ -331,8 +331,10 @@ export default class BattleManager extends cc.Component {
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
         this.updateStuckRescue(dt);
+        const touching = this.isTouchingAnything();   // 每幀算一次，翻滾與翻正共用
         if (this.wallRide) this.wallRide.update(dt, this.moveDir);
-        this.updateAirRotation();   // 內部以 isTouchingAnything() 判定：只有完全騰空才翻滾
+        this.updateAirRotation(touching);   // 只有完全騰空（無接觸）才翻滾
+        this.updateAutoRight(touching);     // 接觸地面且傾斜 → 自動翻正
         this.updateJet();
         this.updatePlayerMelee(dt);
     }
@@ -467,9 +469,9 @@ export default class BattleManager extends cc.Component {
 
     // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
     // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
-    private updateAirRotation() {
+    private updateAirRotation(touching: boolean) {
         if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
-        if (this.isTouchingAnything()) return;   // 有接觸 → 不翻滾
+        if (touching) return;   // 有接觸 → 不翻滾
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
         if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
@@ -477,22 +479,39 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 接觸偵測：從核心與每個輪子往「下、上、左、右」四向打短射線，
+    // 自動翻正：接觸地面/物體、且不在牆面行駛、且車身傾斜時，施加修正扭矩回到直立。
+    private updateAutoRight(touching: boolean) {
+        if (!UPRIGHT.ENABLED || !touching) return;
+        if (!this.playerCar || !this.playerCar.coreNode) return;
+        if (this.wallRide && this.wallRide.isStuck()) return;   // 牆上交給 WallRide 對齊
+        const core = this.playerCar.coreNode;
+        const rb = core.getComponent(cc.RigidBody);
+        if (!rb) return;
+
+        // 車身相對「世界直立」的傾角，正規化到 -180~180
+        let ang = core.angle % 360;
+        if (ang > 180) ang -= 360;
+        if (ang < -180) ang += 360;
+        if (Math.abs(ang) < UPRIGHT.MIN_ANGLE) return;
+
+        let torque = (-ang * UPRIGHT.GAIN) - rb.angularVelocity * UPRIGHT.DAMP;
+        torque = cc.misc.clampf(torque, -UPRIGHT.MAX_TORQUE, UPRIGHT.MAX_TORQUE);
+        (rb as any).applyTorque(torque, true);
+    }
+
+    // 接觸偵測：從車上「每個還活著的零件」往「下、上、左、右」四向打短射線，
     // 命中任何「非玩家自身零件」的 collider（地板/邊界/敵車/障礙物…）就視為接觸中。
-    // 完全沒命中 → 真正騰空 → 才允許空中翻滾。
+    // 完全沒命中 → 真正騰空 → 才允許空中翻滾。（只探核心/輪子會漏掉車體接觸，導致在地上仍被當成騰空亂轉。）
     private isTouchingAnything(): boolean {
-        if (!this.playerCar) return false;
+        if (!this.playerRoot || !this.playerRoot.isValid) return false;
         const pm = cc.director.getPhysicsManager();
         const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
 
-        const probeNodes: cc.Node[] = [];
-        if (this.playerCar.coreNode && this.playerCar.coreNode.isValid) probeNodes.push(this.playerCar.coreNode);
-        for (const j of this.playerCar.wheelJoints) {
-            const wheelRb: any = (j as any).connectedBody;
-            if (wheelRb && wheelRb.node && wheelRb.node.isValid) probeNodes.push(wheelRb.node);
-        }
+        const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
+        for (const rb of bodies) {
+            const node = rb.node;
+            if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
 
-        for (const node of probeNodes) {
             const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
             const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.CONTACT_PROBE;
             for (const d of dirs) {

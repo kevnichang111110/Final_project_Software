@@ -88,6 +88,16 @@ export const AIR = {
     CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
 };
 
+// 自動翻正：接觸地面/物體（非牆面）且車身傾斜時，施加修正扭矩讓車子回到直立。
+// 牆面行駛時交給 WALLRIDE 對齊，這裡不介入。
+export const UPRIGHT = {
+    ENABLED: true,         // 總開關
+    GAIN: 9000,            // 翻正扭矩增益（傾角 × 此值）。愈大回正愈快、也愈容易過衝
+    DAMP: 4500,            // 角速度阻尼（抑制過衝抖動）
+    MAX_TORQUE: 600000,    // 翻正扭矩上限
+    MIN_ANGLE: 8,          // 傾角小於此值(度)就不修正，避免在直立附近一直微抖
+};
+
 // 特殊輪子能力
 export const ABILITY = {
     JET_FORCE: 2600000,       // 噴射輪：boost 時每幀向上推力

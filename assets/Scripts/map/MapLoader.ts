@@ -279,21 +279,37 @@ export default class MapLoader extends cc.Component {
         }
     }
 
-    // ---- 視覺：把牆與虛空畫成實心帶 ----
+    // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝一個大矩形挖掉內界多邊形的洞 ----
     private drawArena(inner: cc.Vec2[], normals: cc.Vec2[]) {
         const n = inner.length;
         const outer: cc.Vec2[] = [];
-        const far: cc.Vec2[] = [];
         for (let i = 0; i < n; i++) {
             const p = inner[i], nm = normals[i];
             outer.push(cc.v2(p.x + nm.x * this.wallThickness, p.y + nm.y * this.wallThickness));
-            far.push(cc.v2(
-                p.x + nm.x * (this.wallThickness + this.voidExtend),
-                p.y + nm.y * (this.wallThickness + this.voidExtend),
-            ));
         }
-        this.fillBand(outer, far, this.voidColor, "arenaVoid", this.visualZIndex - 1);
+        // 虛空：大矩形 + 內界當洞（even-odd），避免舊版「2000px 寬帶在凹角自交」造成的三角形破洞
+        this.fillVoidWithHole(inner, this.voidColor, "arenaVoid", this.visualZIndex - 1);
+        // 牆：內界→外界的薄帶（厚度小、不會自交）；畫在虛空之上蓋住內界~外界那圈
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
+    }
+
+    // 一個遠大於畫面的矩形，挖掉 hole 多邊形（even-odd 填充規則）→ 只填洞外（牆外虛空）
+    private fillVoidWithHole(hole: cc.Vec2[], color: cc.Color, name: string, z: number) {
+        const node = new cc.Node(name);
+        node.parent = this.current!;
+        node.setPosition(0, 0);
+        node.zIndex = z;
+
+        const g = node.addComponent(cc.Graphics);
+        g.fillColor = color;
+
+        const R = this.voidExtend + 4000;   // 夠大以蓋滿畫面外側
+        g.rect(-R, -R, 2 * R, 2 * R);        // 外框（一個子路徑）
+        // 內界多邊形（另一個子路徑）→ even-odd 下變成洞
+        g.moveTo(hole[0].x, hole[0].y);
+        for (let i = 1; i < hole.length; i++) g.lineTo(hole[i].x, hole[i].y);
+        g.close();
+        g.fill();
     }
 
     // 每個頂點朝外的單位法線。
