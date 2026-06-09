@@ -44,8 +44,8 @@ export const BATTLE = {
 export const JOINT = {
     WHEEL_FREQUENCY: 10,
     WHEEL_MAX_TORQUE: 400000,
-    WHEEL_TARGET_SPEED: -600,   // 玩家輪子目標馬達速度（乘上 moveDir）
-    WHEEL_SMOOTHING: 0.15,      // 輪速插值平滑
+    WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
+    WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）
     WELD_FREQUENCY: 0,
     MELEE_MAX_TORQUE: 10000,
     MELEE_ATTACK_SPEED: 1500,   // 玩家近戰揮出
@@ -82,9 +82,26 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    ROTATE_TORQUE: 220000,    // 旋轉扭矩（再調低）
-    MAX_ANGULAR_SPEED: 80,    // 角速度上限（度/秒），愈小轉得愈慢（再調低）
+    // 空中旋轉：直接「控制角速度」而非施加扭矩。每幀把核心角速度以 SPIN_ACCEL 的步進開向目標：
+    // 按 A/D → 目標 ±SPIN_TARGET（度/秒）；沒按 → 目標 0（自然停轉）。
+    // 直接設角速度＋步進限制 → 絕不過衝、絕不發散，被彈飛打出的瘋狂自旋也會被穩定收回，完全可控。
+    SPIN_TARGET: 200,         // 按住 A/D 想達到的旋轉角速度（度/秒），越大轉越快
+    SPIN_ACCEL: 1100,         // 角速度每秒可變化量（度/秒²），越大反應越快（也越生硬）
     GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
+    CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
+};
+
+// 自動翻正：接觸地面/物體（非牆面）且車身傾斜時，施加修正扭矩讓車子回到直立。
+// 牆面行駛時交給 WALLRIDE 對齊，這裡不介入。
+export const UPRIGHT = {
+    ENABLED: true,         // 總開關
+    GAIN: 4000,            // 翻正扭矩增益（傾角 × 此值）。愈大回正愈快、也愈容易過衝
+    DAMP: 6000,            // 角速度阻尼（抑制過衝抖動），調高比較不會彈
+    MAX_TORQUE: 250000,    // 翻正扭矩上限（調低避免硬翻把車彈起來）
+    // 遲滯：傾角超過 TRIGGER_ANGLE（接近翻倒）才開始翻正，一路修正到 RELEASE_ANGLE 內才停。
+    // 兩段門檻避免「只修到一半就停」也避免在地面小傾斜時一直介入造成亂彈。
+    TRIGGER_ANGLE: 55,
+    RELEASE_ANGLE: 8,
 };
 
 // 特殊輪子能力
@@ -120,7 +137,22 @@ export const SCRAMBLE = {
 export const FLOW = {
     USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
-    USE_WALLRIDE: false,      // 牆面行駛：預設關閉。等你做好環形賽道、要測爬牆時再設 true
+    USE_WALLRIDE: true,       // 牆面行駛：開啟才爬得了牆（關閉時玩家碰到牆只會滑下來）
+    USE_STUCK_RESCUE: true,   // 卡住自救：車子想動卻動不了一段時間後，自動瞬移到最近可站的位置
+};
+
+// 卡住自救（StuckRescue）
+export const RESCUE = {
+    STUCK_TIME: 1.6,      // 「想動卻沒前進」累積多久才觸發救援（秒）
+    MIN_PROGRESS: 26,     // 一幀位移超過此值就算有在動，重置計時（px）
+    SEARCH_STEP: 70,      // 往外找站位的環間距（會被車體大小放大）
+    SEARCH_RINGS: 6,      // 往外搜尋幾圈
+    SEARCH_SAMPLES: 12,   // 每圈取樣的角度數
+    DOWN_PROBE: 700,      // 候選點往下找地面的射線長度
+    UP_PROBE: 40,         // 候選點往上一點當射線起點（避免起點剛好埋在地裡）
+    CLEARANCE: 24,        // 站定後離地面的額外淨空
+    COOLDOWN: 1.2,        // 兩次救援之間的冷卻（秒），避免連續瞬移
+    ENCLOSE_PROBE: 4000,  // 判斷「是否在封閉場內」時四方向射線長度（要大於整張圖）
 };
 
 // 近戰揮砍冷卻
@@ -151,8 +183,31 @@ export const WALLRIDE = {
     ALIGN_GAIN: 22000,    // 對齊扭矩增益（車頂轉向地面法線的力道）
     ALIGN_DAMP: 12000,    // 對齊阻尼（抑制過衝抖動）
     ALIGN_MAX: 1500000,   // 對齊扭矩上限
-    WALL_THRESHOLD: 0.4,  // 地面法線水平分量大於此值視為「在牆上」才允許脫離
-    DETACH_IMPULSE: 7000, // 脫離時往牆外彈的衝量
-    DETACH_SPIN: 1200,    // 脫離時的翻轉角衝量
-    DETACH_TIME: 0.5,     // 脫離後多久內不重新吸附（讓它飛出去）
+    WALL_THRESHOLD: 0.4,  // （已停用）舊版判斷在牆上才允許脫離
+    // 重心模型下牆：車身越「貼向牆面法線」抓得越牢；重心太靠外（lean 太低）抓地力歸零 → 自然下落。
+    // lean = 車頂方向 · 牆面外法線（1=完全貼牆、<GRIP_LEAN_MIN=重心太靠外）。空中左右轉即在調整這個朝向（重心）。
+    GRIP_LEAN_MIN: 0.25,  // 抓地力歸零的 lean 門檻；越大越容易因重心外傾而掉下來
+    SLIDE: 0.35,          // 保留多少「沿牆方向」的重力（0=完全黏死不滑、1=完全自然下滑）。不主動爬時會自然沿牆下滑
+};
+
+// 打擊感特效（HitFeedback：背景震動 + 火花 + hitstop）
+// 所有強度依「傷害量」比例縮放：輕擦小晃、重擊大震。手感調校的旋鈕都集中在這。
+export const HITFX = {
+    MIN_DAMAGE: 2,            // 低於此傷害完全不觸發任何回饋（避免持續小擦撞抖個不停）
+
+    // 震動（trauma 模型：受擊累加 trauma，每幀衰減，位移幅度 = trauma^2）。
+    // 主鏡頭 alignWithScreen 開著時移動相機節點無效，所以改成「位移背景節點 (Canvas/bg)」來呈現震動。
+    SHAKE_PER_DAMAGE: 0.07,  // 每點傷害換算的 trauma 增量（0~1）
+    SHAKE_MAX_TRAUMA: 1.0,   // 單次累加後 trauma 上限
+    SHAKE_MAX_OFFSET: 36,    // trauma=1 時背景的最大位移（px），越大震越明顯
+    SHAKE_DECAY: 2.4,        // trauma 每秒衰減量（越大收得越快）
+    SHAKE_FREQ: 40,          // 抖動頻率（越高越「銳」）
+
+    // hitstop（短暫慢動作）：只有大擊／爆破
+    HITSTOP_DAMAGE: 22,      // finalDmg 超過此值才觸發
+    HITSTOP_SCALE: 0.08,     // 慢動作時的 timeScale
+    HITSTOP_TIME: 0.06,      // 慢動作持續秒數（真實時間）
+
+    // 撞擊火花（HitSpark）
+    SPARK_MIN_DAMAGE: 4,     // 低於此傷害不噴火花
 };

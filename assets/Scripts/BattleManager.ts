@@ -8,13 +8,16 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import WallRide from "./battle/WallRide";
+import StuckRescue from "./battle/StuckRescue";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
+import MapLoader from "./map/MapLoader";
+import HitFeedback from "./fx/HitFeedback";
 
 const { ccclass, property } = cc._decorator;
 
@@ -28,6 +31,9 @@ export default class BattleManager extends cc.Component {
     @property([cc.Prefab]) allPrefabs: cc.Prefab[] = [];
     @property(cc.Prefab) settingsPrefab: cc.Prefab | null = null;
     @property(cc.Label) resultLabel: cc.Label | null = null;
+
+    // 預設地圖載入器（選填）：拉進來就會在每次開局重新隨機挑一張地圖；留空則由 MapLoader 自己在 start() 載入第一張
+    @property(MapLoader) mapLoader: MapLoader | null = null;
 
     @property(cc.AudioClip) bgmClip: cc.AudioClip | null = null;
     @property(cc.AudioClip) suddenDeathSfx: cc.AudioClip | null = null;
@@ -76,7 +82,9 @@ export default class BattleManager extends cc.Component {
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
     private wallRide: WallRide | null = null;
-    private detachPressed = false;
+    private playerRescue: StuckRescue | null = null;
+    private botRescue: StuckRescue | null = null;
+    private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
 
     // 記分板
     private playerScoreLabel: cc.Label | null = null;
@@ -93,6 +101,9 @@ export default class BattleManager extends cc.Component {
         cc.PhysicsManager.FIXED_TIME_STEP = PHYSICS.FIXED_TIME_STEP;
         (physics as any).velocityIterations = PHYSICS.VELOCITY_ITERATIONS;
         (physics as any).positionIterations = PHYSICS.POSITION_ITERATIONS;
+
+        // 打擊感回饋：把 HitFeedback 動態掛到主鏡頭節點（免去在 .fire 編輯器手動綁定）
+        this.setupHitFeedback();
 
         this.createScoreboard();
         this.setupBattle();
@@ -118,6 +129,17 @@ export default class BattleManager extends cc.Component {
             mouseTarget.off(cc.Node.EventType.MOUSE_MOVE, this.onMouseMove, this, true);
             mouseTarget.off(cc.Node.EventType.MOUSE_DOWN, this.onMouseDown, this, true);
             mouseTarget.off(cc.Node.EventType.MOUSE_UP, this.onMouseUp, this, true);
+        }
+    }
+
+    // ====================================================================
+    // 打擊感回饋：把 HitFeedback 掛到主鏡頭節點。動態掛載避免動到 game.fire。
+    // ====================================================================
+    private setupHitFeedback() {
+        const cam = cc.Camera.main;
+        if (!cam || !cam.node) return;
+        if (!cam.node.getComponent(HitFeedback)) {
+            cam.node.addComponent(HitFeedback);
         }
     }
 
@@ -220,8 +242,13 @@ export default class BattleManager extends cc.Component {
             prefabs: this.allPrefabs,
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
+        // 玩家車已建好 → 重新挑一張預設地圖（避免車的物件壓在玩家身上）
+        if (this.mapLoader) this.mapLoader.loadRandomMap();
+
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
-        this.detachPressed = false;
+        this.playerRescue = FLOW.USE_STUCK_RESCUE
+            ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
+            : null;
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
@@ -237,6 +264,8 @@ export default class BattleManager extends cc.Component {
     destroyCurrentBattle() {
         if (this.playerRoot && this.playerRoot.isValid) this.playerRoot.destroy();
         if (this.botRoot && this.botRoot.isValid) this.botRoot.destroy();
+        this.playerRescue = null;
+        this.botRescue = null;
         this.unschedule(this.suddenDeathTick);
         this.unschedule(this.spawnSuddenDeathPart);
     }
@@ -256,6 +285,9 @@ export default class BattleManager extends cc.Component {
                 onCoreDie: (winner) => this.handleGameOver(winner),
             });
             this.botAI = new BotAI(this.botCar, this.botGunFireInterval);
+            this.botRescue = FLOW.USE_STUCK_RESCUE
+                ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART, this.coreWorldPos(this.botCar) || cc.v2(0, 0))
+                : null;
         }
     }
 
@@ -299,8 +331,11 @@ export default class BattleManager extends cc.Component {
 
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
-        if (this.wallRide) this.wallRide.update(dt, this.detachPressed);
-        if (!(this.wallRide && this.wallRide.isStuck())) this.updateAirRotation();
+        this.updateStuckRescue(dt);
+        const touching = this.isTouchingAnything();   // 每幀算一次，翻滾與翻正共用
+        if (this.wallRide) this.wallRide.update(dt);
+        this.updateAirRotation(touching, dt);   // 只有完全騰空（無接觸）才翻滾
+        this.updateAutoRight(touching);         // 接觸地面且傾斜 → 自動翻正
         this.updateJet();
         this.updatePlayerMelee(dt);
     }
@@ -433,38 +468,87 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 空中左右旋轉（第 5 點）：只有「離地」時 A/D 才旋轉車身；貼在地面上就交給輪子驅動，不硬翻。
-    private updateAirRotation() {
-        if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
-        if (this.isPlayerGrounded()) return;   // 車子在地上 → 不旋轉
+    // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
+    // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
+    private updateAirRotation(touching: boolean, dt: number) {
+        if (!this.playerCar || !this.playerCar.coreNode) return;
+        if (touching) return;   // 有接觸 → 不翻滾（也不介入旋轉）
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
-        if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
-            (rb as any).applyTorque(this.moveDir * AIR.ROTATE_TORQUE, true);
-        }
+
+        // 直接控制角速度：以 SPIN_ACCEL 的步進開向目標，絕不過衝、不發散。
+        // 按鍵 → ±SPIN_TARGET；沒按 → 0（把亂轉穩定收回）。
+        const target = this.moveDir * AIR.SPIN_TARGET;
+        const cur = rb.angularVelocity;
+        const maxStep = AIR.SPIN_ACCEL * dt;
+        rb.angularVelocity = cur + cc.misc.clampf(target - cur, -maxStep, maxStep);
     }
 
-    // 著地偵測：從每個輪子往正下方打一條短射線，碰到地面/邊界就算著地。
-    // （地面/邊界節點的 group 為 default 或 boundary，與子彈判定地板的依據一致。）
-    private isPlayerGrounded(): boolean {
-        if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return false;
+    // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。
+    // 牆/斜面交給 WallRide 對齊；在地面小傾斜時不介入，避免兩套對齊力互打造成亂彈。
+    private updateAutoRight(touching: boolean) {
+        if (!UPRIGHT.ENABLED || !touching) { this.righting = false; return; }
+        if (!this.playerCar || !this.playerCar.coreNode) { this.righting = false; return; }
+        if (this.wallRide && this.wallRide.isEngaged()) { this.righting = false; return; }
+        const core = this.playerCar.coreNode;
+        const rb = core.getComponent(cc.RigidBody);
+        if (!rb) return;
+
+        // 車身相對「世界直立」的傾角，正規化到 -180~180
+        let ang = core.angle % 360;
+        if (ang > 180) ang -= 360;
+        if (ang < -180) ang += 360;
+
+        // 遲滯：傾角夠大才啟動，修正到夠小才關閉
+        const mag = Math.abs(ang);
+        if (mag > UPRIGHT.TRIGGER_ANGLE) this.righting = true;
+        else if (mag < UPRIGHT.RELEASE_ANGLE) this.righting = false;
+        if (!this.righting) return;
+
+        let torque = (-ang * UPRIGHT.GAIN) - rb.angularVelocity * UPRIGHT.DAMP;
+        torque = cc.misc.clampf(torque, -UPRIGHT.MAX_TORQUE, UPRIGHT.MAX_TORQUE);
+        (rb as any).applyTorque(torque, true);
+    }
+
+    // 接觸偵測：從車上「每個還活著的零件」往「下、上、左、右」四向打短射線，
+    // 命中任何「非玩家自身零件」的 collider（地板/邊界/敵車/障礙物…）就視為接觸中。
+    // 完全沒命中 → 真正騰空 → 才允許空中翻滾。（只探核心/輪子會漏掉車體接觸，導致在地上仍被當成騰空亂轉。）
+    private isTouchingAnything(): boolean {
+        if (!this.playerRoot || !this.playerRoot.isValid) return false;
         const pm = cc.director.getPhysicsManager();
+        const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
 
-        for (const j of this.playerCar.wheelJoints) {
-            const wheelRb: any = (j as any).connectedBody;
-            const wheelNode: cc.Node = wheelRb && wheelRb.node ? wheelRb.node : null;
-            if (!wheelNode || !wheelNode.isValid) continue;
+        const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
+        for (const rb of bodies) {
+            const node = rb.node;
+            if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
 
-            const o = wheelNode.convertToWorldSpaceAR(cc.v2(0, 0));
-            const probe = Math.max(wheelNode.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
-            const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - probe), cc.RayCastType.All);
-
-            for (const r of results) {
-                const g = r.collider.node.group;
-                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
+            const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
+            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.CONTACT_PROBE;
+            for (const d of dirs) {
+                const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x + d.x * len, o.y + d.y * len), cc.RayCastType.All);
+                for (const r of results) {
+                    const g = r.collider.node.group;
+                    if (g !== GROUP.PLAYER_PART && g !== GROUP.PLAYER_BULLET) return true;
+                }
             }
         }
         return false;
+    }
+
+    // 卡住自救：玩家「有按移動鍵卻沒前進」/ Bot 卡住 一段時間後，瞬移到最近可站處
+    private updateStuckRescue(dt: number) {
+        if (this.playerRescue) {
+            this.playerRescue.update(dt, this.moveDir !== 0, this.coreWorldPos(this.botCar));
+        }
+        if (this.botRescue) {
+            this.botRescue.update(dt, !!this.botAI, this.coreWorldPos(this.playerCar));
+        }
+    }
+
+    private coreWorldPos(car: BuiltCar | null): cc.Vec2 | null {
+        if (!car || !car.coreNode || !car.coreNode.isValid) return null;
+        return car.coreNode.convertToWorldSpaceAR(cc.v2(0, 0));
     }
 
     // 噴射輪（第 4 點）：按住 boost 時每幀向上推
@@ -662,10 +746,7 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.up:
                 this.isBoosting = true;   // 噴射 boost
                 break;
-            case cc.macro.KEY.s:
-            case cc.macro.KEY.down:
-                this.detachPressed = true; // 脫離牆壁
-                break;
+            // S / 下：不再做爆發式脫離。下牆改用「反向輸入減速」（按與爬升相反的 A/D）。
         }
     }
 
@@ -685,10 +766,6 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.w:
             case cc.macro.KEY.up:
                 this.isBoosting = false;
-                break;
-            case cc.macro.KEY.s:
-            case cc.macro.KEY.down:
-                this.detachPressed = false;
                 break;
         }
     }

@@ -4,13 +4,14 @@
 // 並把建立結果（核心血量、槍械、各種 joint）打包回傳，讓 BattleManager / BotAI 使用。
 
 import GameManager from "../GameManager";
-import { GROUP, BATTLE, GRID, MOUSE_TURRET } from "../core/GameConstants";
+import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX } from "../core/GameConstants";
 import { PartType, WeaponMode } from "../core/PartType";
 import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
 } from "../core/PartUtils";
 import JointFactory from "./JointFactory";
 import Explosion from "./Explosion";
+import HitFeedback from "../fx/HitFeedback";
 import Health from "../HealthManager";
 import MouseCannon from "../weapons/MouseCannon";
 
@@ -185,6 +186,8 @@ export default class CarBuilder {
             const worldPos = node.convertToWorldSpaceAR(cc.v2(0, 0));
             const size = Math.max(node.width, node.height) || 60;
             Explosion.spawn(parent, worldPos, size);
+            // 零件擊破：固定給一發強回饋（大震 + hitstop + 火花），讓「破壞」手感分明
+            HitFeedback.trigger(HITFX.HITSTOP_DAMAGE, worldPos);
         }
 
         node.getComponents(cc.Joint).forEach(j => j.destroy());

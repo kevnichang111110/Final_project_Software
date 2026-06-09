@@ -13,6 +13,7 @@
 import Bullet from "./Bullet";
 import { isWeaponNode } from "./core/PartUtils";
 import { GROUP, DAMAGE } from "./core/GameConstants";
+import HitFeedback from "./fx/HitFeedback";
 
 const { ccclass, property } = cc._decorator;
 
@@ -272,6 +273,10 @@ export default class Health extends cc.Component {
 
         const finalDmg = Math.min(incoming, DAMAGE.MAX_PER_HIT);
         this.currentHP -= finalDmg;
+
+        // 打擊感回饋（鏡頭震動／縮放衝擊／火花／大擊 hitstop）：強度依實際傷害縮放，
+        // 接觸點用零件中心世界座標。涵蓋近戰、碰撞、子彈所有扣血路徑。
+        HitFeedback.trigger(finalDmg, this.node.convertToWorldSpaceAR(cc.v2(0, 0)));
 
         // 受擊 → 讓血條明顯顯示一段時間
         this.hitTimer = this.hitShowDuration;
