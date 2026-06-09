@@ -84,7 +84,6 @@ export default class BattleManager extends cc.Component {
     private wallRide: WallRide | null = null;
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
-    private detachPressed = false;
 
     // 記分板
     private playerScoreLabel: cc.Label | null = null;
@@ -249,7 +248,6 @@ export default class BattleManager extends cc.Component {
         this.playerRescue = FLOW.USE_STUCK_RESCUE
             ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
             : null;
-        this.detachPressed = false;
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
@@ -333,8 +331,8 @@ export default class BattleManager extends cc.Component {
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
         this.updateStuckRescue(dt);
-        if (this.wallRide) this.wallRide.update(dt, this.detachPressed);
-        if (!(this.wallRide && this.wallRide.isStuck())) this.updateAirRotation();
+        if (this.wallRide) this.wallRide.update(dt, this.moveDir);
+        this.updateAirRotation();   // 內部以 isTouchingAnything() 判定：只有完全騰空才翻滾
         this.updateJet();
         this.updatePlayerMelee(dt);
     }
@@ -467,10 +465,11 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 空中左右旋轉（第 5 點）：只有「離地」時 A/D 才旋轉車身；貼在地面上就交給輪子驅動，不硬翻。
+    // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
+    // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
     private updateAirRotation() {
         if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
-        if (this.isPlayerGrounded()) return;   // 車子在地上 → 不旋轉
+        if (this.isTouchingAnything()) return;   // 有接觸 → 不翻滾
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
         if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
@@ -478,24 +477,30 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 著地偵測：從每個輪子往正下方打一條短射線，碰到地面/邊界就算著地。
-    // （地面/邊界節點的 group 為 default 或 boundary，與子彈判定地板的依據一致。）
-    private isPlayerGrounded(): boolean {
-        if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return false;
+    // 接觸偵測：從核心與每個輪子往「下、上、左、右」四向打短射線，
+    // 命中任何「非玩家自身零件」的 collider（地板/邊界/敵車/障礙物…）就視為接觸中。
+    // 完全沒命中 → 真正騰空 → 才允許空中翻滾。
+    private isTouchingAnything(): boolean {
+        if (!this.playerCar) return false;
         const pm = cc.director.getPhysicsManager();
+        const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
 
+        const probeNodes: cc.Node[] = [];
+        if (this.playerCar.coreNode && this.playerCar.coreNode.isValid) probeNodes.push(this.playerCar.coreNode);
         for (const j of this.playerCar.wheelJoints) {
             const wheelRb: any = (j as any).connectedBody;
-            const wheelNode: cc.Node = wheelRb && wheelRb.node ? wheelRb.node : null;
-            if (!wheelNode || !wheelNode.isValid) continue;
+            if (wheelRb && wheelRb.node && wheelRb.node.isValid) probeNodes.push(wheelRb.node);
+        }
 
-            const o = wheelNode.convertToWorldSpaceAR(cc.v2(0, 0));
-            const probe = Math.max(wheelNode.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
-            const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - probe), cc.RayCastType.All);
-
-            for (const r of results) {
-                const g = r.collider.node.group;
-                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
+        for (const node of probeNodes) {
+            const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
+            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.CONTACT_PROBE;
+            for (const d of dirs) {
+                const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x + d.x * len, o.y + d.y * len), cc.RayCastType.All);
+                for (const r of results) {
+                    const g = r.collider.node.group;
+                    if (g !== GROUP.PLAYER_PART && g !== GROUP.PLAYER_BULLET) return true;
+                }
             }
         }
         return false;
@@ -711,10 +716,7 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.up:
                 this.isBoosting = true;   // 噴射 boost
                 break;
-            case cc.macro.KEY.s:
-            case cc.macro.KEY.down:
-                this.detachPressed = true; // 脫離牆壁
-                break;
+            // S / 下：不再做爆發式脫離。下牆改用「反向輸入減速」（按與爬升相反的 A/D）。
         }
     }
 
@@ -734,10 +736,6 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.w:
             case cc.macro.KEY.up:
                 this.isBoosting = false;
-                break;
-            case cc.macro.KEY.s:
-            case cc.macro.KEY.down:
-                this.detachPressed = false;
                 break;
         }
     }

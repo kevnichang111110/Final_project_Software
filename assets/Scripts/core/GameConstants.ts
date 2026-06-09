@@ -85,6 +85,7 @@ export const AIR = {
     ROTATE_TORQUE: 220000,    // 旋轉扭矩（再調低）
     MAX_ANGULAR_SPEED: 80,    // 角速度上限（度/秒），愈小轉得愈慢（再調低）
     GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
+    CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
 };
 
 // 特殊輪子能力
@@ -167,9 +168,12 @@ export const WALLRIDE = {
     ALIGN_DAMP: 12000,    // 對齊阻尼（抑制過衝抖動）
     ALIGN_MAX: 1500000,   // 對齊扭矩上限
     WALL_THRESHOLD: 0.4,  // 地面法線水平分量大於此值視為「在牆上」才允許脫離
-    DETACH_IMPULSE: 7000, // 脫離時往牆外彈的衝量
-    DETACH_SPIN: 1200,    // 脫離時的翻轉角衝量
-    DETACH_TIME: 0.5,     // 脫離後多久內不重新吸附（讓它飛出去）
+    DETACH_IMPULSE: 7000, // （已停用）舊版爆發式脫離往牆外彈的衝量
+    DETACH_SPIN: 1200,    // （已停用）舊版脫離時的翻轉角衝量
+    DETACH_TIME: 0.5,     // （已停用）舊版脫離後多久內不重新吸附
+    // 反向減速下牆：按與爬升相反的方向 → 吸附漸進鬆開、靠重力沿牆滑下
+    RELEASE_TIME: 0.35,   // 鬆牆漸進秒數（愈小鬆得愈快）
+    CLIMB_LOCK_SPEED: 120,// 鎖定「爬升輸入方向」的最小切向速度（px/s），達到才記錄哪個鍵在爬升
 };
 
 // 打擊感特效（HitFeedback：鏡頭震動 + 縮放衝擊 + 火花 + hitstop）
