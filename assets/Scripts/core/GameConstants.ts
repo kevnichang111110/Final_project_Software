@@ -121,6 +121,20 @@ export const FLOW = {
     USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
     USE_WALLRIDE: false,      // 牆面行駛：預設關閉。等你做好環形賽道、要測爬牆時再設 true
+    USE_STUCK_RESCUE: true,   // 卡住自救：車子想動卻動不了一段時間後，自動瞬移到最近可站的位置
+};
+
+// 卡住自救（StuckRescue）
+export const RESCUE = {
+    STUCK_TIME: 1.6,      // 「想動卻沒前進」累積多久才觸發救援（秒）
+    MIN_PROGRESS: 26,     // 一幀位移超過此值就算有在動，重置計時（px）
+    SEARCH_STEP: 70,      // 往外找站位的環間距（會被車體大小放大）
+    SEARCH_RINGS: 6,      // 往外搜尋幾圈
+    SEARCH_SAMPLES: 12,   // 每圈取樣的角度數
+    DOWN_PROBE: 700,      // 候選點往下找地面的射線長度
+    UP_PROBE: 40,         // 候選點往上一點當射線起點（避免起點剛好埋在地裡）
+    CLEARANCE: 24,        // 站定後離地面的額外淨空
+    COOLDOWN: 1.2,        // 兩次救援之間的冷卻（秒），避免連續瞬移
 };
 
 // 近戰揮砍冷卻

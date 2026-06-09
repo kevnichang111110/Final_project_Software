@@ -13,6 +13,7 @@ import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import WallRide from "./battle/WallRide";
+import StuckRescue from "./battle/StuckRescue";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
 
@@ -76,6 +77,8 @@ export default class BattleManager extends cc.Component {
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
     private wallRide: WallRide | null = null;
+    private playerRescue: StuckRescue | null = null;
+    private botRescue: StuckRescue | null = null;
     private detachPressed = false;
 
     // 記分板
@@ -221,6 +224,7 @@ export default class BattleManager extends cc.Component {
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
+        this.playerRescue = FLOW.USE_STUCK_RESCUE ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
         this.detachPressed = false;
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
@@ -237,6 +241,8 @@ export default class BattleManager extends cc.Component {
     destroyCurrentBattle() {
         if (this.playerRoot && this.playerRoot.isValid) this.playerRoot.destroy();
         if (this.botRoot && this.botRoot.isValid) this.botRoot.destroy();
+        this.playerRescue = null;
+        this.botRescue = null;
         this.unschedule(this.suddenDeathTick);
         this.unschedule(this.spawnSuddenDeathPart);
     }
@@ -256,6 +262,7 @@ export default class BattleManager extends cc.Component {
                 onCoreDie: (winner) => this.handleGameOver(winner),
             });
             this.botAI = new BotAI(this.botCar, this.botGunFireInterval);
+            this.botRescue = FLOW.USE_STUCK_RESCUE ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART) : null;
         }
     }
 
@@ -299,6 +306,7 @@ export default class BattleManager extends cc.Component {
 
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
+        this.updateStuckRescue(dt);
         if (this.wallRide) this.wallRide.update(dt, this.detachPressed);
         if (!(this.wallRide && this.wallRide.isStuck())) this.updateAirRotation();
         this.updateJet();
@@ -465,6 +473,21 @@ export default class BattleManager extends cc.Component {
             }
         }
         return false;
+    }
+
+    // 卡住自救：玩家「有按移動鍵卻沒前進」/ Bot 卡住 一段時間後，瞬移到最近可站處
+    private updateStuckRescue(dt: number) {
+        if (this.playerRescue) {
+            this.playerRescue.update(dt, this.moveDir !== 0, this.coreWorldPos(this.botCar));
+        }
+        if (this.botRescue) {
+            this.botRescue.update(dt, !!this.botAI, this.coreWorldPos(this.playerCar));
+        }
+    }
+
+    private coreWorldPos(car: BuiltCar | null): cc.Vec2 | null {
+        if (!car || !car.coreNode || !car.coreNode.isValid) return null;
+        return car.coreNode.convertToWorldSpaceAR(cc.v2(0, 0));
     }
 
     // 噴射輪（第 4 點）：按住 boost 時每幀向上推
