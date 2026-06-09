@@ -471,13 +471,16 @@ export default class BattleManager extends cc.Component {
     // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
     // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
     private updateAirRotation(touching: boolean) {
-        if (!this.playerCar || !this.playerCar.coreNode || this.moveDir === 0) return;
-        if (touching) return;   // 有接觸 → 不翻滾
+        if (!this.playerCar || !this.playerCar.coreNode) return;
+        if (touching) return;   // 有接觸 → 不翻滾（也不介入旋轉）
         const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
         if (!rb) return;
-        if (Math.abs(rb.angularVelocity) < AIR.MAX_ANGULAR_SPEED) {
-            (rb as any).applyTorque(this.moveDir * AIR.ROTATE_TORQUE, true);
-        }
+
+        // 速度控制：把角速度開向目標（按鍵 → ±SPIN_TARGET；沒按 → 0，等於把亂轉煞回來）
+        const target = this.moveDir * AIR.SPIN_TARGET;
+        let torque = (target - rb.angularVelocity) * AIR.ROTATE_GAIN;
+        torque = cc.misc.clampf(torque, -AIR.ROTATE_TORQUE, AIR.ROTATE_TORQUE);
+        (rb as any).applyTorque(torque, true);
     }
 
     // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。

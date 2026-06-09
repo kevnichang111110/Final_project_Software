@@ -293,7 +293,9 @@ export default class MapLoader extends cc.Component {
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
     }
 
-    // 一個遠大於畫面的矩形，挖掉 hole 多邊形（even-odd 填充規則）→ 只填洞外（牆外虛空）
+    // 一個遠大於畫面的矩形，挖掉 hole 多邊形 → 只填洞外（牆外虛空）。
+    // cc.Graphics 用 nonzero 環繞規則，外框與洞必須「相反方向」才會挖空：
+    // 外框畫逆時針(CCW)，洞統一轉成順時針(CW)。
     private fillVoidWithHole(hole: cc.Vec2[], color: cc.Color, name: string, z: number) {
         const node = new cc.Node(name);
         node.parent = this.current!;
@@ -304,12 +306,24 @@ export default class MapLoader extends cc.Component {
         g.fillColor = color;
 
         const R = this.voidExtend + 4000;   // 夠大以蓋滿畫面外側
-        g.rect(-R, -R, 2 * R, 2 * R);        // 外框（一個子路徑）
-        // 內界多邊形（另一個子路徑）→ even-odd 下變成洞
-        g.moveTo(hole[0].x, hole[0].y);
-        for (let i = 1; i < hole.length; i++) g.lineTo(hole[i].x, hole[i].y);
+        // 外框：逆時針
+        g.moveTo(-R, -R); g.lineTo(R, -R); g.lineTo(R, R); g.lineTo(-R, R); g.close();
+        // 洞：轉成順時針（與外框相反）→ nonzero 下內部環繞數歸零 → 不填 = 挖空
+        const cw = this.signedArea(hole) > 0 ? hole.slice().reverse() : hole;
+        g.moveTo(cw[0].x, cw[0].y);
+        for (let i = 1; i < cw.length; i++) g.lineTo(cw[i].x, cw[i].y);
         g.close();
         g.fill();
+    }
+
+    // 多邊形有號面積（>0 為逆時針 CCW）
+    private signedArea(pts: cc.Vec2[]): number {
+        let a = 0;
+        for (let i = 0; i < pts.length; i++) {
+            const p = pts[i], q = pts[(i + 1) % pts.length];
+            a += p.x * q.y - q.x * p.y;
+        }
+        return a * 0.5;
     }
 
     // 每個頂點朝外的單位法線。

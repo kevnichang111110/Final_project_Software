@@ -82,8 +82,12 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    ROTATE_TORQUE: 220000,    // 旋轉扭矩（再調低）
-    MAX_ANGULAR_SPEED: 80,    // 角速度上限（度/秒），愈小轉得愈慢（再調低）
+    // 空中旋轉改為「速度控制」：A/D 把角速度開向 ±SPIN_TARGET；沒按鍵則開向 0（＝阻尼）。
+    // 這樣按鍵轉得明顯可控，且被彈簧/擠壓打出的瘋狂高速自旋也會被主動煞回來，不會一直亂轉。
+    ROTATE_TORQUE: 220000,    // 每幀施加扭矩的上限（控制力道）
+    ROTATE_GAIN: 3000,        // 速度誤差 × 此值 = 扭矩（愈大反應愈快、煞得愈猛）
+    SPIN_TARGET: 220,         // 按住 A/D 時想達到的旋轉角速度（度/秒）
+    MAX_ANGULAR_SPEED: 80,    // （已停用，保留避免外部引用）
     GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
     CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
 };
@@ -192,19 +196,13 @@ export const WALLRIDE = {
 export const HITFX = {
     MIN_DAMAGE: 2,            // 低於此傷害完全不觸發任何回饋（避免持續小擦撞抖個不停）
 
-    // 鏡頭震動（trauma 模型：受擊累加 trauma，每幀衰減，位移 = shake^2）
+    // 鏡頭震動（trauma 模型：受擊累加 trauma，每幀衰減）。
+    // 註：主鏡頭 alignWithScreen 開著時移動節點無效（會把視野弄壞），所以震動改用 zoomRatio 快速抖動呈現。
     SHAKE_PER_DAMAGE: 0.06,  // 每點傷害換算的 trauma 增量（0~1）
     SHAKE_MAX_TRAUMA: 0.9,   // 單次累加後 trauma 上限
-    SHAKE_MAX_OFFSET: 24,    // trauma=1 時的最大位移（px）
-    SHAKE_MAX_ANGLE: 2.5,    // trauma=1 時的最大旋轉（度）
     SHAKE_DECAY: 1.8,        // trauma 每秒衰減量
-    SHAKE_FREQ: 28,          // 抖動頻率（越高越「銳」）
-
-    // 鏡頭縮放衝擊（zoom punch）：重擊才明顯。zoomRatio 變大 = 拉近
-    ZOOM_PER_DAMAGE: 0.004,  // 每點傷害換算的 zoom 增量
-    ZOOM_MAX: 0.12,          // zoom 衝擊上限
-    ZOOM_IN_TIME: 0.05,      // 拉近時間（快）
-    ZOOM_OUT_TIME: 0.18,     // 回復時間（慢）
+    SHAKE_FREQ: 34,          // 抖動頻率（越高越「銳」）
+    SHAKE_ZOOM_AMP: 0.06,    // trauma=1 時 zoomRatio 抖動幅度（±比例）。震動就是靠這個忽近忽遠的脈動
 
     // hitstop（短暫慢動作）：只有大擊／爆破
     HITSTOP_DAMAGE: 22,      // finalDmg 超過此值才觸發
