@@ -58,7 +58,7 @@ export default class MapLoader extends cc.Component {
     @property({ tooltip: "是否依邊界點自動畫深灰牆＋淺灰虛空（關掉就用 prefab 內自畫的美術）" })
     autoDrawVisuals: boolean = true;
     @property({ tooltip: "邊界牆的視覺厚度 (深灰色帶)" })
-    wallThickness: number = 22;
+    wallThickness: number = 10;
     @property({ tooltip: "牆外淺灰色虛空往外延伸多遠（要夠大才能蓋滿畫面外側）" })
     voidExtend: number = 2000;
     @property({ tooltip: "邊界牆顏色（深灰）" })
@@ -296,22 +296,41 @@ export default class MapLoader extends cc.Component {
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
     }
 
-    // 每個頂點朝外的單位法線（以多邊形質心為內側基準校正方向）
+    // 每個頂點朝外的單位法線。
+    // 改用「多邊形繞行方向（winding）」決定朝外側，而非以質心校正——
+    // 質心法在凹多邊形（顛簸環形場地）的凹頂點會把法線判反，造成牆／虛空往內側溢出（內外判斷錯誤）。
+    // 作法：先用有號面積判斷 CCW/CW，逐邊取一致朝外的邊法線，頂點法線＝相鄰兩邊法線的平均。
     private outwardNormals(pts: cc.Vec2[]): cc.Vec2[] {
         const n = pts.length;
-        let cx = 0, cy = 0;
-        for (const p of pts) { cx += p.x; cy += p.y; }
-        cx /= n; cy /= n;
+
+        // 有號面積 > 0 表示頂點為逆時針（CCW）排列
+        let area2 = 0;
+        for (let i = 0; i < n; i++) {
+            const a = pts[i], b = pts[(i + 1) % n];
+            area2 += a.x * b.y - b.x * a.y;
+        }
+        const ccw = area2 > 0;
+
+        // 每條邊一致朝外的單位法線：CCW 時內側在邊的左手邊，朝外為 (dy, -dx)；CW 則相反
+        const edgeN: cc.Vec2[] = [];
+        for (let i = 0; i < n; i++) {
+            const a = pts[i], b = pts[(i + 1) % n];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.hypot(dx, dy) || 1;
+            dx /= len; dy /= len;
+            const nx = ccw ? dy : -dy;
+            const ny = ccw ? -dx : dx;
+            edgeN.push(cc.v2(nx, ny));
+        }
+
+        // 頂點法線 = 相鄰兩邊法線平均（凹頂點也不會反向）
         const out: cc.Vec2[] = [];
         for (let i = 0; i < n; i++) {
-            const prev = pts[(i - 1 + n) % n];
-            const next = pts[(i + 1) % n];
-            let nx = next.y - prev.y;
-            let ny = -(next.x - prev.x);
+            const e0 = edgeN[(i - 1 + n) % n];
+            const e1 = edgeN[i];
+            let nx = e0.x + e1.x, ny = e0.y + e1.y;
             const len = Math.hypot(nx, ny) || 1;
             nx /= len; ny /= len;
-            // 校正成「朝外」（與從質心指向該點同向）
-            if (nx * (pts[i].x - cx) + ny * (pts[i].y - cy) < 0) { nx = -nx; ny = -ny; }
             out.push(cc.v2(nx, ny));
         }
         return out;

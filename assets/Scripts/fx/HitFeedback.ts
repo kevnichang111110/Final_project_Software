@@ -23,10 +23,13 @@ export default class HitFeedback extends cc.Component {
     private basePos: cc.Vec2 = cc.v2(0, 0);
     private baseAngle: number = 0;
     private baseZoom: number = 1;
+    private origAlign: boolean = true;       // 還原用：相機原本的 alignWithScreen
 
     private trauma: number = 0;
     private elapsed: number = 0;       // 抖動相位用的時間累加器
     private hitstopActive: boolean = false;
+
+    private flashNode: cc.Node | null = null;   // 全螢幕受擊染紅濾鏡
 
     // 三組互質相位，讓 X/Y/角度的抖動不同步、更自然
     private static readonly PHASE_X = 12.9898;
@@ -35,19 +38,57 @@ export default class HitFeedback extends cc.Component {
 
     onLoad() {
         HitFeedback.instance = this;
-        this.basePos = this.node.getPosition();
-        this.baseAngle = this.node.angle;
         this.camera = this.getComponent(cc.Camera);
-        if (this.camera) this.baseZoom = this.camera.zoomRatio;
+
+        if (this.camera) {
+            this.baseZoom = this.camera.zoomRatio;
+            // 關鍵：相機開著 alignWithScreen 時會強制對齊螢幕、忽略節點 transform，
+            // 導致「移動相機節點做震動」完全無效。關掉它，改由節點 transform 控制視角。
+            // 相機節點位於原點 (0,0)、角度 0，關掉後視角與原本一致、不會跳動。
+            this.origAlign = (this.camera as any).alignWithScreen;
+            (this.camera as any).alignWithScreen = false;
+        }
+
+        // 以原點為震動基準（對齊原本置中的視角）
+        this.node.setPosition(0, 0);
+        this.node.angle = 0;
+        this.basePos = cc.v2(0, 0);
+        this.baseAngle = 0;
+
+        this.createFlashOverlay();
     }
 
     onDestroy() {
         if (HitFeedback.instance === this) HitFeedback.instance = null;
+        // 還原相機 alignWithScreen，避免影響其他場景／重進場景
+        if (this.camera) (this.camera as any).alignWithScreen = this.origAlign;
         // 保險：若銷毀時仍在 hitstop，務必還原時間倍率
         if (this.hitstopActive) {
             cc.director.getScheduler().setTimeScale(1);
             this.hitstopActive = false;
         }
+    }
+
+    // 建立全螢幕紅色濾鏡（掛在 Canvas 下、超大尺寸、最高 zIndex），受擊時短暫染紅
+    private createFlashOverlay() {
+        const parent = this.node.parent;   // Canvas（相機的父層，螢幕空間置中）
+        if (!parent) return;
+
+        const node = new cc.Node("HitFlash");
+        node.parent = parent;
+        node.setPosition(0, 0);
+        node.zIndex = cc.macro.MAX_ZINDEX;  // 蓋在所有遊戲物件與 HUD 之上
+        node.opacity = 0;
+
+        const g = node.addComponent(cc.Graphics);
+        // 放大 1.8 倍，確保鏡頭震動／拉近時邊緣不會露出
+        const w = cc.winSize.width * 1.8;
+        const h = cc.winSize.height * 1.8;
+        g.fillColor = cc.color(HITFX.FLASH_COLOR_R, HITFX.FLASH_COLOR_G, HITFX.FLASH_COLOR_B, 255);
+        g.rect(-w / 2, -h / 2, w, h);
+        g.fill();
+
+        this.flashNode = node;
     }
 
     update(dt: number) {
@@ -95,6 +136,19 @@ export default class HitFeedback extends cc.Component {
             .start();
     }
 
+    flash(alpha01: number) {
+        if (!this.flashNode || !this.flashNode.isValid) return;
+        const peak = Math.round(Math.min(HITFX.FLASH_MAX_ALPHA, alpha01) * 255);
+        if (peak <= 0) return;
+        cc.Tween.stopAllByTarget(this.flashNode);
+        this.flashNode.opacity = 0;
+        // 快染、慢退（cc.Graphics 會吃 node.opacity，與 Explosion 的做法一致）
+        cc.tween(this.flashNode)
+            .to(HITFX.FLASH_IN_TIME, { opacity: peak })
+            .to(HITFX.FLASH_OUT_TIME, { opacity: 0 })
+            .start();
+    }
+
     hitstop(scale: number, time: number) {
         if (this.hitstopActive) return;          // 重入保護：避免把時間倍率卡在慢速
         this.hitstopActive = true;
@@ -113,6 +167,10 @@ export default class HitFeedback extends cc.Component {
 
         inst.addTrauma(Math.min(HITFX.SHAKE_MAX_TRAUMA, damage * HITFX.SHAKE_PER_DAMAGE));
         inst.zoomPunch(Math.min(HITFX.ZOOM_MAX, damage * HITFX.ZOOM_PER_DAMAGE));
+
+        if (damage >= HITFX.FLASH_MIN_DAMAGE) {
+            inst.flash(damage * HITFX.FLASH_PER_DAMAGE);
+        }
 
         if (damage >= HITFX.HITSTOP_DAMAGE) {
             inst.hitstop(HITFX.HITSTOP_SCALE, HITFX.HITSTOP_TIME);

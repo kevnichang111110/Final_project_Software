@@ -344,7 +344,7 @@
     "avoidCars": true,
     "carClearRadius": 170,
     "autoDrawVisuals": true,
-    "wallThickness": 22,
+    "wallThickness": 10,
     "voidExtend": 2000,
     "boundaryColor": {
       "__type__": "cc.Color",

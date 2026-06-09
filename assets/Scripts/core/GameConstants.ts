@@ -198,4 +198,14 @@ export const HITFX = {
 
     // 撞擊火花（HitSpark）
     SPARK_MIN_DAMAGE: 4,     // 低於此傷害不噴火花
+
+    // 受擊濾鏡（全螢幕紅色閃光 + 邊角暗角 vignette；模擬「受傷」的鏡頭染色）
+    FLASH_MIN_DAMAGE: 6,     // 低於此傷害不染紅
+    FLASH_PER_DAMAGE: 0.012, // 每點傷害換算的紅色不透明度
+    FLASH_MAX_ALPHA: 0.45,   // 紅色染色不透明度上限（0~1）
+    FLASH_IN_TIME: 0.04,     // 染紅時間（快）
+    FLASH_OUT_TIME: 0.32,    // 退去時間（慢）
+    FLASH_COLOR_R: 200,      // 染色 RGB（偏暗紅，避免過曝）
+    FLASH_COLOR_G: 30,
+    FLASH_COLOR_B: 30,
 };
