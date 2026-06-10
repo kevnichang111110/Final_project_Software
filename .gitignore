@@ -3,3 +3,8 @@ local/
 temp/
 build/
 .DS_Store
+
+# Editor temp / lock files
+.#*
+*~
+\#*\#
