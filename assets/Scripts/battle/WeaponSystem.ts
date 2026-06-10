@@ -4,7 +4,26 @@
 //   fireTowards(weaponNode, side, target, o) → 朝指定世界座標射擊（滑鼠砲），可帶 per-shot 覆寫
 
 import Bullet from "../Bullet";
+import NodePool from "../core/NodePool";
 import { GROUP } from "../core/GameConstants";
+
+// 子彈池：module-level singleton，跨回合 / 跨場景存活（回收的節點已脫離場景樹，換場景不被銷毀）。
+// 以發射時的 prefab 建立；prefab 換了（理論上不會）才重建。
+let bulletPool: NodePool | null = null;
+let bulletPoolPrefab: cc.Prefab | null = null;
+function getBulletPool(prefab: cc.Prefab): NodePool {
+    if (!bulletPool || bulletPoolPrefab !== prefab) {
+        bulletPoolPrefab = prefab;
+        bulletPool = new NodePool(() => cc.instantiate(prefab));
+    }
+    return bulletPool;
+}
+
+// 把一個子彈節點收回池子（供 Bullet.recycler 與 BattleManager 回合結束清掃共用）。
+export function recycleBullet(node: cc.Node): void {
+    if (bulletPool) bulletPool.put(node);
+    else if (node && node.isValid) node.destroy();
+}
 
 export interface BulletConfig {
     speed: number;
@@ -74,7 +93,9 @@ export default class WeaponSystem {
         const lifetime = override && override.lifetime != null ? override.lifetime : this.config.lifetime;
         const damagesAll = !!(override && override.damagesAll);
 
-        const bullet = cc.instantiate(this.bulletPrefab);
+        const pool = getBulletPool(this.bulletPrefab);
+        const bullet = pool.get();
+        bullet.active = true;
         bullet.group = side === "PLAYER" ? GROUP.PLAYER_BULLET : GROUP.BOT_BULLET;
         bullet.angle = Math.atan2(dir.y, dir.x) * 180 / Math.PI;
         bullet.parent = this.container;
@@ -82,7 +103,10 @@ export default class WeaponSystem {
         bullet.zIndex = 5;
 
         const rb = bullet.getComponent(cc.RigidBody);
-        if (rb) rb.linearVelocity = cc.v2(dir.x * speed, dir.y * speed);
+        if (rb) {
+            rb.linearVelocity = cc.v2(dir.x * speed, dir.y * speed);
+            rb.angularVelocity = 0;   // 重用節點：清掉殘留角速度
+        }
 
         const comp = bullet.getComponent(Bullet);
         if (comp) {
@@ -90,6 +114,8 @@ export default class WeaponSystem {
             comp.damage = damage;
             comp.lifeTime = lifetime;
             comp.damagesAll = damagesAll;
+            comp.recycler = recycleBullet;   // 命中/逾時時收回池子而非 destroy
+            comp.arm();                       // 重置 hasExploded + 重新開始存活倒數
         }
         return bullet;
     }
