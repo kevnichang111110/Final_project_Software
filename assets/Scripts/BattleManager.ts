@@ -12,6 +12,7 @@ import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT,
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
+import Bullet from "./Bullet";
 import WallRide from "./battle/WallRide";
 import AirPhysics from "./battle/AirPhysics";
 import StuckRescue from "./battle/StuckRescue";
@@ -277,10 +278,22 @@ export default class BattleManager extends cc.Component {
     destroyCurrentBattle() {
         if (this.playerRoot && this.playerRoot.isValid) this.playerRoot.destroy();
         if (this.botRoot && this.botRoot.isValid) this.botRoot.destroy();
+        this.recycleLiveBullets();
         this.playerRescue = null;
         this.botRescue = null;
         this.unschedule(this.suddenDeathTick);
         this.unschedule(this.spawnSuddenDeathPart);
+    }
+
+    // 回合結束把仍在飛的子彈收回池子（子彈掛在 this.node 底下）。
+    // 走 explode() 而非直接 put：explode 會先 unscheduleAllCallbacks，
+    // 清掉殘留的存活倒數，避免之後計時觸發造成重複回收（同一節點被 put 兩次）。
+    private recycleLiveBullets() {
+        const children = this.node.children.slice();   // 複製：回收會改動 children
+        for (const c of children) {
+            const b = c.getComponent(Bullet);
+            if (b) b.explode();
+        }
     }
 
     private spawnBotSequence() {
