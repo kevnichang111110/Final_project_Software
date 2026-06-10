@@ -4,7 +4,7 @@
 // 並把建立結果（核心血量、槍械、各種 joint）打包回傳，讓 BattleManager / BotAI 使用。
 
 import GameManager from "../GameManager";
-import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX } from "../core/GameConstants";
+import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX, JOINT } from "../core/GameConstants";
 import { PartType, WeaponMode } from "../core/PartType";
 import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
@@ -128,6 +128,12 @@ export default class CarBuilder {
                 if (right && isBodyLikeNode(right)) JointFactory.weld(node, right);
                 const top = result.partsMap.get(`${x},${y + 1}`);
                 if (top && isBodyLikeNode(top)) JointFactory.weld(node, top);
+
+                // 隱形星狀框：每個非核心 body 額外焊一條到核心 → 整車剛性大增、零件不被甩飛。
+                // joint 掛在 node 上，零件死亡時會跟著銷毀。
+                if (JOINT.STAR_WELD_TO_CORE && result.coreNode && node !== result.coreNode) {
+                    JointFactory.weld(node, result.coreNode);
+                }
             }
 
             if (isWheelNode(node)) {

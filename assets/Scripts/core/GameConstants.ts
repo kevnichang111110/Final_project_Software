@@ -47,6 +47,7 @@ export const JOINT = {
     WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
     WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）
     WELD_FREQUENCY: 0,
+    STAR_WELD_TO_CORE: true,    // 每個 body 額外焊一條到核心（隱形星狀框），讓車體更硬、零件不被甩飛。出問題可關
     MELEE_MAX_TORQUE: 10000,
     MELEE_ATTACK_SPEED: 1500,   // 玩家近戰揮出
     MELEE_RETURN_SPEED: -500,   // 玩家近戰收回
@@ -93,6 +94,7 @@ export const AIRPHYS = {
     ROT_INPUT: 480,   // 按住 A/D 每秒對角速度增加的量（度/秒²）
     MAX_SPIN: 480,    // 角速度上限（度/秒）。也夾住「離地初始旋轉」避免被彈飛打出超高速一直翻
     SPIN_DAMP: 1.4,   // 角速度每秒衰減比例（越大越快停轉）。放手後越轉越慢、不會一直翻
+    GRAVITY_Y: -600,  // 空中下落重力（比世界 -960 緩）。調這個改空中掉落快慢：負越大掉越快
 };
 
 // 自動翻正：接觸地面/物體（非牆面）且車身傾斜時，施加修正扭矩讓車子回到直立。

@@ -282,7 +282,7 @@ export default class MapLoader extends cc.Component {
     // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝內界往外放大成大環的實心帶 ----
     // cc.Graphics 是「每個子路徑各自實心填」，不支援跨子路徑挖洞，自交的四邊形還會破洞。
     // 因此虛空不用「大矩形挖洞」，改成「內界 → 把內界以質心放大 8 倍的外環」之間鋪實心帶：
-    // fillBand 的每塊四邊形都是放射狀梯形（不自交、相鄰共邊不破洞），既蓋滿場外、又絕不碰到內側。
+    // void 用 fillOutside（只填外側、內側留洞透出背景）；牆用薄帶蓋在最上。
     private drawArena(inner: cc.Vec2[], normals: cc.Vec2[]) {
         const n = inner.length;
         const outer: cc.Vec2[] = [];
@@ -290,19 +290,65 @@ export default class MapLoader extends cc.Component {
             const p = inner[i], nm = normals[i];
             outer.push(cc.v2(p.x + nm.x * this.wallThickness, p.y + nm.y * this.wallThickness));
         }
-        // 虛空：內界 → 放大環（蓋滿畫面外側，內側保持透空顯示背景）
-        const far = this.scaleFromCentroid(inner, 8);
-        this.fillBand(inner, far, this.voidColor, "arenaVoid", this.visualZIndex - 1);
-        // 牆：內界→外界的薄帶，畫在虛空之上蓋住內界~外界那圈
+        // 虛空：只填內界「外側」（內側留洞 → 透出背景圖）
+        this.fillOutside(inner, this.voidColor, 6000, "arenaVoid", this.visualZIndex - 1);
+        // 牆：內界→外界的薄帶，畫在虛空之上
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
     }
 
-    // 把多邊形以其質心為中心放大 factor 倍（放射狀，保持拓樸不自交）
-    private scaleFromCentroid(pts: cc.Vec2[], factor: number): cc.Vec2[] {
-        let cx = 0, cy = 0;
-        for (const p of pts) { cx += p.x; cy += p.y; }
-        cx /= pts.length; cy /= pts.length;
-        return pts.map(p => cc.v2(cx + (p.x - cx) * factor, cy + (p.y - cy) * factor));
+    // 多邊形有號面積（>0 為逆時針 CCW）
+    private signedArea(pts: cc.Vec2[]): number {
+        let a = 0;
+        for (let i = 0; i < pts.length; i++) {
+            const p = pts[i], q = pts[(i + 1) % pts.length];
+            a += p.x * q.y - q.x * p.y;
+        }
+        return a * 0.5;
+    }
+
+    // 只填多邊形「外側」一圈寬 ext 的實心區（內側留洞）。
+    // cc.Graphics 每個子路徑各自 earcut 實心填、重疊同色 OR、不支援挖洞；
+    // 故用「每邊往外擠的矩形 + 每頂點的楔形三角形」鋪滿外側，每塊都凸、不自交 → 無破洞、不塞內側。
+    private fillOutside(inner: cc.Vec2[], color: cc.Color, ext: number, name: string, z: number) {
+        const node = new cc.Node(name);
+        node.parent = this.current!;
+        node.setPosition(0, 0);
+        node.zIndex = z;
+
+        const g = node.addComponent(cc.Graphics);
+        g.fillColor = color;
+
+        const n = inner.length;
+        const ccw = this.signedArea(inner) > 0;
+
+        // 一致朝外的每邊法線
+        const en: cc.Vec2[] = [];
+        for (let i = 0; i < n; i++) {
+            const a = inner[i], b = inner[(i + 1) % n];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.hypot(dx, dy) || 1;
+            dx /= len; dy /= len;
+            en.push(ccw ? cc.v2(dy, -dx) : cc.v2(-dy, dx));
+        }
+
+        // 每邊往外擠成矩形
+        for (let i = 0; i < n; i++) {
+            const a = inner[i], b = inner[(i + 1) % n], N = en[i];
+            g.moveTo(a.x, a.y);
+            g.lineTo(b.x, b.y);
+            g.lineTo(b.x + N.x * ext, b.y + N.y * ext);
+            g.lineTo(a.x + N.x * ext, a.y + N.y * ext);
+            g.close();
+        }
+        // 每頂點補楔形三角形（蓋凸角縫；凹角重疊同色無害）
+        for (let i = 0; i < n; i++) {
+            const p = inner[i], Np = en[(i - 1 + n) % n], Nc = en[i];
+            g.moveTo(p.x, p.y);
+            g.lineTo(p.x + Np.x * ext, p.y + Np.y * ext);
+            g.lineTo(p.x + Nc.x * ext, p.y + Nc.y * ext);
+            g.close();
+        }
+        g.fill();
     }
 
     // 每個頂點朝外的單位法線。
