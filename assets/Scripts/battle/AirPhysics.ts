@@ -29,10 +29,28 @@ export default class AirPhysics {
     // 進入空中時記下每個零件：相對質心位移、初始角度、原本的 body type（落地還原用）
     private parts = new Map<cc.Node, { ox: number; oy: number; angle0: number; type0: number }>();
 
+    // 建車當下的「標準版型」：每個零件相對核心的 local 座標與相對角度（旋轉不變、固定不變）。
+    // 進空中時用它＋核心目前位姿重建剛體，避免把「被彈散的瞬間」當成版型而凍結散架。
+    private canonical = new Map<cc.Node, { lx: number; ly: number; relAngle: number }>();
+
     constructor(car: BuiltCar, root: cc.Node, partGroup: string) {
         this.root = root;
         this.partGroup = partGroup;
         this.coreNode = car.coreNode;
+        this.captureCanonical();
+    }
+
+    // 在剛建好車、還沒被物理拉扯時擷取標準版型（相對核心）
+    private captureCanonical() {
+        const core = this.coreNode;
+        if (!core || !core.isValid) return;
+        const coreAngle = core.angle;
+        for (const rb of this.livingBodies()) {
+            const nd = rb.node;
+            const w = nd.convertToWorldSpaceAR(cc.v2(0, 0));
+            const local = core.convertToNodeSpaceAR(w);   // 核心 local 座標（旋轉不變）
+            this.canonical.set(nd, { lx: local.x, ly: local.y, relAngle: nd.angle - coreAngle });
+        }
     }
 
     isActive(): boolean { return this.active; }
@@ -69,34 +87,50 @@ export default class AirPhysics {
     }
 
     private enterAir() {
+        const core = this.coreNode;
         const bodies = this.livingBodies();
-        if (bodies.length === 0) { this.active = false; return; }
+        if (!core || !core.isValid || bodies.length === 0) { this.active = false; return; }
 
-        // 質心 = 各零件世界座標平均；質心速度 = 各零件線速度平均（權重都 1）
+        // 用核心「目前位姿」+ 標準版型，重建每個零件的「正確（未散架）世界位置」。
+        // 落地當下若被彈簧/受擊拉散，這裡會把它組裝回正確形狀，再以剛體旋轉。
+        const coreWorld = core.convertToWorldSpaceAR(cc.v2(0, 0));
+        const ca = core.angle * DEG2RAD;
+        const cos = Math.cos(ca), sin = Math.sin(ca);
+
         let cx = 0, cy = 0, vx = 0, vy = 0;
-        const worlds: cc.Vec2[] = [];
+        const proper = new Map<cc.Node, { wx: number; wy: number; ang: number }>();
         for (const rb of bodies) {
-            const w = rb.node.convertToWorldSpaceAR(cc.v2(0, 0));
-            worlds.push(w);
-            cx += w.x; cy += w.y;
+            const nd = rb.node;
+            const cn = this.canonical.get(nd);
+            // 沒有標準版型紀錄者（理論上不會）退回用目前世界座標
+            let wx: number, wy: number, ang: number;
+            if (cn) {
+                wx = coreWorld.x + (cn.lx * cos - cn.ly * sin);
+                wy = coreWorld.y + (cn.lx * sin + cn.ly * cos);
+                ang = core.angle + cn.relAngle;
+            } else {
+                const w = nd.convertToWorldSpaceAR(cc.v2(0, 0));
+                wx = w.x; wy = w.y; ang = nd.angle;
+            }
+            proper.set(nd, { wx, wy, ang });
+            cx += wx; cy += wy;
             const v = rb.linearVelocity;
             vx += v.x; vy += v.y;
         }
         const n = bodies.length;
         this.com = cc.v2(cx / n, cy / n);
-        this.comVel = cc.v2(vx / n, vy / n);
+        this.comVel = cc.v2(vx / n, vy / n);   // 保留進空中當下的動量
 
-        // 初始旋轉量 = 核心當下角速度（度/秒），夾在上限內避免被彈飛打出超高速一直翻
-        const coreRb = this.coreNode!.getComponent(cc.RigidBody);
+        const coreRb = core.getComponent(cc.RigidBody);
         this.omega = cc.misc.clampf(coreRb ? coreRb.angularVelocity : 0, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
         this.rot = 0;
 
-        // 記下各零件資訊並切成 Kinematic（Box2D 不再施力，純由本積分器擺放）
+        // 記下「正確版型」相對質心的 offset/angle，並切成 Kinematic
         this.parts.clear();
-        for (let i = 0; i < bodies.length; i++) {
-            const rb = bodies[i];
+        for (const rb of bodies) {
             const nd = rb.node;
-            this.parts.set(nd, { ox: worlds[i].x - this.com.x, oy: worlds[i].y - this.com.y, angle0: nd.angle, type0: rb.type });
+            const pr = proper.get(nd)!;
+            this.parts.set(nd, { ox: pr.wx - this.com.x, oy: pr.wy - this.com.y, angle0: pr.ang, type0: rb.type });
             rb.type = cc.RigidBodyType.Kinematic;
             rb.linearVelocity = cc.v2(0, 0);
             rb.angularVelocity = 0;

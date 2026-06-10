@@ -79,7 +79,10 @@ export default class Health extends cc.Component {
     // 血條
     // ====================================================================
     private createHPBar() {
-        if (this.hpBarNode || !this.node.parent) return;
+        if (this.hpBarNode || !this.node.parent) {
+            cc.log(`[HP] createHPBar SKIP (barExists=${!!this.hpBarNode}, parent=${!!this.node.parent})`);
+            return;
+        }
 
         const node = new cc.Node("HP_Bar");
         node.parent = this.node.parent;   // 掛在 root（不旋轉、不鏡像）
@@ -262,7 +265,11 @@ export default class Health extends cc.Component {
     }
 
     takeDamage(dmg: number) {
-        if (this.currentHP <= 0 || this.isInvincible) return;
+        if (this.currentHP <= 0 || this.isInvincible) {
+            cc.log(`[HP] takeDamage IGNORED (hp=${this.currentHP.toFixed(0)} invincible=${this.isInvincible})`);
+            return;
+        }
+        cc.log(`[HP] takeDamage on "${this.node.name}" dmg=${dmg.toFixed(1)}`);
 
         // 方塊防禦：BlockTrait.damageMultiplier < 1 代表高防禦
         let incoming = dmg;
@@ -303,9 +310,9 @@ export default class Health extends cc.Component {
 
     // 受擊當下立刻把血條建好、釘到零件上方並畫成明顯。不靠 update（即使 update 沒跑也看得到）。
     private forceShowBar() {
-        if (!this.inBattle || !this.showDebugHPBar) return;
+        if (!this.inBattle || !this.showDebugHPBar) { cc.log(`[HP] forceShowBar SKIP inBattle=${this.inBattle} show=${this.showDebugHPBar}`); return; }
         if (!this.node || !this.node.isValid) return;
-        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) return; }
+        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) { cc.log("[HP] forceShowBar SKIP: bar not created"); return; } }
         if (!this.hpBarNode.isValid) return;
 
         const worldCenter = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
@@ -321,6 +328,7 @@ export default class Health extends cc.Component {
         this.curAlpha = 1;
         const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
         this.drawBar(ratio, 1);
+        cc.log(`[HP] forceShowBar DREW ratio=${ratio.toFixed(2)} at (${this.hpBarNode.x.toFixed(0)},${this.hpBarNode.y.toFixed(0)}) parent=${parent ? parent.name : "null"}`);
         this.lastAlpha = 1;
         this.lastRatio = ratio;
     }
