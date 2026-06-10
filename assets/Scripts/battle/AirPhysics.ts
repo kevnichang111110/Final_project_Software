@@ -10,7 +10,7 @@
 //       完全由本積分器逐幀擺放（不會被物理拉扯而散架、抽搐）。落地時再切回 Dynamic。
 // 由 BattleManager 每幀呼叫 update(dt, moveDir, grounded, onWall)，回傳是否正在接管（active）。
 
-import { AIRPHYS } from "../core/GameConstants";
+import { AIRPHYS, GROUP } from "../core/GameConstants";
 import { BuiltCar } from "./CarBuilder";
 
 const DEG2RAD = Math.PI / 180;
@@ -68,6 +68,38 @@ export default class AirPhysics {
             if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
         }
         return inside;
+    }
+
+    // 候選質心 (candX,candY) 是否會撞到障礙物或衝出地圖邊界。
+    // fromX,fromY = 移動前質心（掃掠射線起點），cos/sin = 當前車身旋轉。
+    // 逐零件：先看候選位置是否出界，再從「移動前 → 候選」掃一條射線並多延伸半個零件尺寸，
+    // 讓零件「邊緣」停在障礙表面外，而不是中心點直接穿進去。只攔地面/邊界群組，無視子彈與另一台車。
+    private blocked(candX: number, candY: number, fromX: number, fromY: number, cos: number, sin: number): boolean {
+        const pm = cc.director.getPhysicsManager();
+        for (const rb of this.livingBodies()) {
+            const p = this.parts.get(rb.node);
+            if (!p) continue;
+            const rx = p.ox * cos - p.oy * sin;
+            const ry = p.ox * sin + p.oy * cos;
+
+            // 出界：候選位置跑到場外
+            if (this.boundary.length >= 3 && !this.pointInPolygon(candX + rx, candY + ry)) return true;
+
+            // 障礙物掃掠
+            const from = cc.v2(fromX + rx, fromY + ry);
+            const to = cc.v2(candX + rx, candY + ry);
+            const d = to.sub(from);
+            const dist = d.mag();
+            if (dist <= 0.0001) continue;   // 該軸沒位移就不用掃
+            const half = Math.max(rb.node.width, rb.node.height, 40) * 0.5;
+            const end = from.add(d.mul((dist + half) / dist));   // 多延伸半個零件尺寸
+            const results = pm.rayCast(from, end, cc.RayCastType.All);
+            for (const r of results) {
+                const g = r.collider.node.group;
+                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
+            }
+        }
+        return false;
     }
 
     // 回傳是否正在接管空中物理。grounded=著地、onWall=貼牆。
@@ -166,32 +198,26 @@ export default class AirPhysics {
         const rad = this.rot * DEG2RAD;
         const cos = Math.cos(rad), sin = Math.sin(rad);
 
-        // 下落：自由落體（候選質心，先不提交）
-        const newVelX = this.comVel.x;
-        const newVelY = this.comVel.y + AIRPHYS.GRAVITY_Y * dt;
-        let newComX = this.com.x + newVelX * dt;
-        let newComY = this.com.y + newVelY * dt;
+        // 下落：自由落體 + 逐軸碰撞解析（先 Y 後 X）。
+        // 之前只夾「地圖邊界」，沒擋障礙物 → Kinematic 零件被 setPosition 直接擺位、
+        // Box2D 無法阻擋 → 穿過障礙物，落地時又卡在物件裡。這裡改成移動前先掃掠射線，
+        // 撞到障礙/出界就停在該軸原地（會貼著障礙表面），讓落地交接乾淨。
+        let velX = this.comVel.x;
+        let velY = this.comVel.y + AIRPHYS.GRAVITY_Y * dt;
 
-        // 邊界夾制：若任一零件的新位置會跑到場外 → 本幀不平移、速度歸零（停在場內、不衝出地圖）
-        if (this.boundary.length >= 3) {
-            let outside = false;
-            for (const rb of this.livingBodies()) {
-                const p = this.parts.get(rb.node);
-                if (!p) continue;
-                const rx = p.ox * cos - p.oy * sin;
-                const ry = p.ox * sin + p.oy * cos;
-                if (!this.pointInPolygon(newComX + rx, newComY + ry)) { outside = true; break; }
-            }
-            if (outside) {
-                newComX = this.com.x; newComY = this.com.y;
-                this.comVel.x = 0; this.comVel.y = 0;
-            } else {
-                this.comVel.x = newVelX; this.comVel.y = newVelY;
-            }
-        } else {
-            this.comVel.x = newVelX; this.comVel.y = newVelY;
+        // Y 軸：先試垂直移動，撞到就停在障礙頂端（或底面），該軸速度歸零
+        let comY = this.com.y + velY * dt;
+        if (this.blocked(this.com.x, comY, this.com.x, this.com.y, cos, sin)) {
+            comY = this.com.y; velY = 0;
         }
-        this.com.x = newComX; this.com.y = newComY;
+        // X 軸：用已解析的 Y 再試水平移動 → 沿障礙表面滑動，不會整台凍在半空
+        let comX = this.com.x + velX * dt;
+        if (this.blocked(comX, comY, this.com.x, comY, cos, sin)) {
+            comX = this.com.x; velX = 0;
+        }
+
+        this.com.x = comX; this.com.y = comY;
+        this.comVel.x = velX; this.comVel.y = velY;
 
         // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
         for (const rb of this.livingBodies()) {
