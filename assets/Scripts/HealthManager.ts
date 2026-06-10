@@ -280,6 +280,8 @@ export default class Health extends cc.Component {
 
         // 受擊 → 讓血條明顯顯示一段時間
         this.hitTimer = this.hitShowDuration;
+        // 直接強制立刻顯示血條：takeDamage 由物理回呼觸發，即使 update 因故沒跑，受擊也一定看得到血條。
+        this.forceShowBar();
 
         this.isInvincible = true;
         this.scheduleOnce(() => {
@@ -297,6 +299,30 @@ export default class Health extends cc.Component {
         this.playSfx("die");
         this.currentHP = 0;
         if (this.onDieCallback) this.onDieCallback();
+    }
+
+    // 受擊當下立刻把血條建好、釘到零件上方並畫成明顯。不靠 update（即使 update 沒跑也看得到）。
+    private forceShowBar() {
+        if (!this.inBattle || !this.showDebugHPBar) return;
+        if (!this.node || !this.node.isValid) return;
+        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) return; }
+        if (!this.hpBarNode.isValid) return;
+
+        const worldCenter = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
+        const parent = this.hpBarNode.parent;
+        if (parent) {
+            const local = parent.convertToNodeSpaceAR(cc.v2(worldCenter.x, worldCenter.y + this.debugBarOffsetY));
+            this.hpBarNode.setPosition(local);
+        }
+        this.hpBarNode.angle = 0;
+        this.hpBarNode.scaleX = 1;
+        this.hpBarNode.scaleY = 1;
+
+        this.curAlpha = 1;
+        const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
+        this.drawBar(ratio, 1);
+        this.lastAlpha = 1;
+        this.lastRatio = ratio;
     }
 
     // 優先用 PartAudio（第 8 點的通用音效介面），沒有才退回 Health 自己的舊欄位

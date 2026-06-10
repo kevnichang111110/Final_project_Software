@@ -8,9 +8,9 @@
 //
 // 重點：接管期間把零件剛體切成 Kinematic，Box2D 就不會對它們施重力/關節力/碰撞反作用，
 //       完全由本積分器逐幀擺放（不會被物理拉扯而散架、抽搐）。落地時再切回 Dynamic。
-// 由 BattleManager 每幀呼叫 update(dt, moveDir, touching)，回傳是否正在接管（active）。
+// 由 BattleManager 每幀呼叫 update(dt, moveDir, grounded, onWall)，回傳是否正在接管（active）。
 
-import { AIRPHYS, GROUP } from "../core/GameConstants";
+import { AIRPHYS } from "../core/GameConstants";
 import { BuiltCar } from "./CarBuilder";
 
 const DEG2RAD = Math.PI / 180;
@@ -38,20 +38,24 @@ export default class AirPhysics {
     isActive(): boolean { return this.active; }
     getCoM(): cc.Vec2 { return cc.v2(this.com.x, this.com.y); }
 
-    // 回傳是否正在接管空中物理
-    update(dt: number, moveDir: number, touching: boolean): boolean {
+    // 回傳是否正在接管空中物理。grounded=著地、onWall=貼牆。
+    // 黏著式：一旦接管，只有「著地」才交回 Box2D；貼牆/掠過都不打斷 → 整車當單一剛體穩定旋轉、不亂跳。
+    update(dt: number, moveDir: number, grounded: boolean, onWall: boolean): boolean {
         const core = this.coreNode;
         if (!core || !core.isValid) { if (this.active) this.exitAir(); return false; }
 
-        if (touching) {                 // 有接觸 → 交回 Box2D
-            if (this.active) this.exitAir();
-            return false;
+        if (this.active) {
+            if (grounded) { this.exitAir(); return false; }   // 著地 → 交回 Box2D
+            this.integrate(dt, moveDir);
+            return true;
         }
 
-        if (!this.active) this.enterAir();   // 剛離地：擷取初始狀態、切 Kinematic
-        if (!this.active) return false;       // 沒有活零件等 → 放棄接管
-
-        return this.integrate(dt, moveDir);   // 撞牆時內部會 exitAir 並回傳 false
+        // 尚未接管：只有「真正騰空（沒著地、也沒貼牆）」才接管
+        if (grounded || onWall) return false;
+        this.enterAir();
+        if (!this.active) return false;
+        this.integrate(dt, moveDir);
+        return true;
     }
 
     // 目前車上仍屬於本車的零件剛體
@@ -102,47 +106,25 @@ export default class AirPhysics {
         cc.log(`[AirPhysics] ENTER air (parts=${bodies.length}, omega=${this.omega.toFixed(0)})`);
     }
 
-    // 回傳 true=已提交本幀擺放；false=偵測到要撞牆，已 exitAir 交回 Box2D
-    private integrate(dt: number, moveDir: number): boolean {
-        // 先算候選新狀態（先不寫進欄位）
-        let newOmega = this.omega + AIRPHYS.ROT_INPUT * moveDir * dt;
-        newOmega = cc.misc.clampf(newOmega, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
-        newOmega *= Math.max(0, 1 - AIRPHYS.SPIN_DAMP * dt);
-        const newRot = this.rot + newOmega * dt;
+    // 整車當「單一剛體」積分：輸入加速→阻尼→積分 omega/rot、自由落體 com，
+    // 再用單一 (com, rot) 把所有零件剛體擺放（繞質心一起轉）。不做掃掠/中途交接 → 不亂跳。
+    private integrate(dt: number, moveDir: number) {
+        // 旋轉：按住 A/D 持續加速（含上限）→ 阻尼 → 積分
+        this.omega += AIRPHYS.ROT_INPUT * moveDir * dt;
+        this.omega = cc.misc.clampf(this.omega, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
+        this.omega *= Math.max(0, 1 - AIRPHYS.SPIN_DAMP * dt);
+        this.rot += this.omega * dt;
 
         // 下落：自由落體（只受空中重力，水平速度不變）
-        const newComVel = cc.v2(this.comVel.x, this.comVel.y + AIRPHYS.GRAVITY_Y * dt);
-        const newCom = cc.v2(this.com.x + newComVel.x * dt, this.com.y + newComVel.y * dt);
+        this.comVel.y += AIRPHYS.GRAVITY_Y * dt;
+        this.com.x += this.comVel.x * dt;
+        this.com.y += this.comVel.y * dt;
 
-        const rad = newRot * DEG2RAD;
+        // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
+        const rad = this.rot * DEG2RAD;
         const cos = Math.cos(rad), sin = Math.sin(rad);
-        const pm = cc.director.getPhysicsManager();
-        const bodies = this.livingBodies();
 
-        // 掃掠檢查：任一零件 old→new 會穿過地板/邊界 → 交回 Box2D，不提交（避免穿模）
-        for (const rb of bodies) {
-            const nd = rb.node;
-            const p = this.parts.get(nd);
-            if (!p) continue;
-            const oldW = nd.convertToWorldSpaceAR(cc.v2(0, 0));
-            const rx = p.ox * cos - p.oy * sin;
-            const ry = p.ox * sin + p.oy * cos;
-            const newW = cc.v2(newCom.x + rx, newCom.y + ry);
-            if (oldW.x === newW.x && oldW.y === newW.y) continue;
-            const hits = pm.rayCast(oldW, newW, cc.RayCastType.All);
-            for (const h of hits) {
-                const g = h.collider.node.group;
-                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) { this.exitAir(); return false; }
-            }
-        }
-
-        // 提交：寫欄位 + 逐幀剛體擺放（零件為 Kinematic，只跟著 transform 走）
-        this.omega = newOmega;
-        this.rot = newRot;
-        this.comVel = newComVel;
-        this.com = newCom;
-
-        for (const rb of bodies) {
+        for (const rb of this.livingBodies()) {
             const nd = rb.node;
             const p = this.parts.get(nd);
             if (!p) continue;
@@ -158,7 +140,6 @@ export default class AirPhysics {
             if (anyRb.syncPosition) anyRb.syncPosition(false);
             if (anyRb.syncRotation) anyRb.syncRotation(false);
         }
-        return true;
     }
 
     // 交回 Box2D：把零件切回原本 type，並灌入「剛體速度場」v = comVel + ω × r，落地銜接平順

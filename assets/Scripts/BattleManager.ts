@@ -347,7 +347,7 @@ export default class BattleManager extends cc.Component {
         const grounded = this.isGrounded();
         // 真正騰空（沒著地、也沒貼牆）→ 客製化空中物理接管（繞質心旋轉 + 自由落體）。
         // 注意：用「著地/貼牆」判斷，而非「附近有沒有東西」，否則在牆邊飛行時會一直被當成接觸 → 不接管 → 交給 Box2D 亂轉。
-        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, onWall || grounded) : false;
+        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, grounded, onWall) : false;
         if (!inAir && !onWall) {
             this.updateAutoRight(grounded);         // 著地且傾斜 → 自動翻正
             this.updateJet();                       // 空中為純自由落體，不施噴射推力
