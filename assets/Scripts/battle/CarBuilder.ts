@@ -4,7 +4,7 @@
 // 並把建立結果（核心血量、槍械、各種 joint）打包回傳，讓 BattleManager / BotAI 使用。
 
 import GameManager from "../GameManager";
-import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX, JOINT } from "../core/GameConstants";
+import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX, JOINT, PHYSICS } from "../core/GameConstants";
 import { PartType, WeaponMode } from "../core/PartType";
 import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
@@ -72,6 +72,8 @@ export default class CarBuilder {
                 startPos.y + data.gridY * GRID.CELL_SIZE
             );
             node.scaleX = sideMultiplier;  // Bot 水平翻轉
+
+            CarBuilder.inflateCollider(node);   // 碰撞體稍微外擴，讓車外緣接近實心、薄物件插不進凹口
 
             result.partsMap.set(`${data.gridX},${data.gridY}`, node);
 
@@ -182,6 +184,23 @@ export default class CarBuilder {
         g.moveTo(dir.x * 12, dir.y * 12);
         g.lineTo(dir.x * 240, dir.y * 240);
         g.stroke();
+    }
+
+    // 把零件碰撞體稍微外擴，讓整車外緣接近連續實心、凹口變淺（薄碰撞體插不進輪子/方塊縫）。
+    private static inflateCollider(node: cc.Node) {
+        const inf = PHYSICS.COLLIDER_INFLATE;
+        if (inf <= 0) return;
+        const box = node.getComponent(cc.PhysicsBoxCollider);
+        if (box) {
+            box.size = cc.size(box.size.width + inf, box.size.height + inf);
+            box.apply();
+            return;
+        }
+        const circle = node.getComponent(cc.PhysicsCircleCollider);
+        if (circle) {
+            circle.radius += inf / 2;
+            circle.apply();
+        }
     }
 
     // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀

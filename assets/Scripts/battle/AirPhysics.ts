@@ -138,7 +138,6 @@ export default class AirPhysics {
         }
 
         this.active = true;
-        cc.log(`[AirPhysics] ENTER air (parts=${bodies.length}, omega=${this.omega.toFixed(0)})`);
     }
 
     // 整車當「單一剛體」積分：輸入加速→阻尼→積分 omega/rot、自由落體 com，
@@ -200,6 +199,5 @@ export default class AirPhysics {
 
         this.parts.clear();
         this.active = false;
-        cc.log("[AirPhysics] EXIT air → Box2D");
     }
 }

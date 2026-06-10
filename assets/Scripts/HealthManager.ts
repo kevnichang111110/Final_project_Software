@@ -81,10 +81,7 @@ export default class Health extends cc.Component {
     // 血條
     // ====================================================================
     private createHPBar() {
-        if (this.hpBarNode || !this.node.parent) {
-            cc.log(`[HP] createHPBar SKIP (barExists=${!!this.hpBarNode}, parent=${!!this.node.parent})`);
-            return;
-        }
+        if (this.hpBarNode || !this.node.parent) return;
 
         const node = new cc.Node("HP_Bar");
         node.parent = this.node.parent;   // 掛在 root（不旋轉、不鏡像）
@@ -193,10 +190,7 @@ export default class Health extends cc.Component {
     // ====================================================================
     onBeginContact(contact: cc.PhysicsContact, selfCollider: cc.PhysicsCollider, otherCollider: cc.PhysicsCollider) {
         if (!Health.activeInBattle) return;   // 非戰鬥（如商店）不判定傷害
-        if (this.isInvincible || this.currentHP <= 0) {
-            cc.log(`[HP] contact IGNORED on "${this.node.name}" (invincible=${this.isInvincible} dead=${this.currentHP <= 0})`);
-            return;
-        }
+        if (this.isInvincible || this.currentHP <= 0) return;
 
         const myGroup = this.node.group;
         const otherGroup = otherCollider.node.group;
@@ -204,7 +198,6 @@ export default class Health extends cc.Component {
         // --- 子彈 ---
         const bullet = otherCollider.node.getComponent("Bullet") as Bullet;
         if (bullet) {
-            cc.log(`[HP] contact BULLET on "${this.node.name}"`);
             // 無差別子彈（滑鼠砲）：不分敵我都受傷
             if (bullet.damagesAll) {
                 const dmg = isWeaponNode(this.node) ? bullet.damage * DAMAGE.BULLET_VS_WEAPON : bullet.damage;
@@ -247,7 +240,6 @@ export default class Health extends cc.Component {
         rb2.getLinearVelocityFromWorldPoint(p, v2);
 
         const relativeVelocity = v1.sub(v2).mag();
-        cc.log(`[HP] contact OPPONENT on "${this.node.name}" relV=${relativeVelocity.toFixed(0)} (threshold=${DAMAGE.COLLISION_THRESHOLD})`);
 
         if (relativeVelocity > DAMAGE.COLLISION_THRESHOLD) {
             let damage = (relativeVelocity - DAMAGE.COLLISION_THRESHOLD) / DAMAGE.COLLISION_DIVISOR;
@@ -272,11 +264,7 @@ export default class Health extends cc.Component {
     }
 
     takeDamage(dmg: number) {
-        if (this.currentHP <= 0 || this.isInvincible) {
-            cc.log(`[HP] takeDamage IGNORED (hp=${this.currentHP.toFixed(0)} invincible=${this.isInvincible})`);
-            return;
-        }
-        cc.log(`[HP] takeDamage on "${this.node.name}" dmg=${dmg.toFixed(1)}`);
+        if (this.currentHP <= 0 || this.isInvincible) return;
 
         // 方塊防禦：BlockTrait.damageMultiplier < 1 代表高防禦
         let incoming = dmg;
@@ -317,9 +305,9 @@ export default class Health extends cc.Component {
 
     // 受擊當下立刻把血條建好、釘到零件上方並畫成明顯。不靠 update（即使 update 沒跑也看得到）。
     private forceShowBar() {
-        if (!Health.activeInBattle || !this.showDebugHPBar) { cc.log(`[HP] forceShowBar SKIP active=${Health.activeInBattle} show=${this.showDebugHPBar}`); return; }
+        if (!Health.activeInBattle || !this.showDebugHPBar) return;
         if (!this.node || !this.node.isValid) return;
-        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) { cc.log("[HP] forceShowBar SKIP: bar not created"); return; } }
+        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) return; }
         if (!this.hpBarNode.isValid) return;
 
         const worldCenter = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
@@ -335,7 +323,6 @@ export default class Health extends cc.Component {
         this.curAlpha = 1;
         const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
         this.drawBar(ratio, 1);
-        cc.log(`[HP] forceShowBar DREW ratio=${ratio.toFixed(2)} at (${this.hpBarNode.x.toFixed(0)},${this.hpBarNode.y.toFixed(0)}) parent=${parent ? parent.name : "null"}`);
         this.lastAlpha = 1;
         this.lastRatio = ratio;
     }

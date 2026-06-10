@@ -27,6 +27,9 @@ export const PHYSICS = {
     VELOCITY_ITERATIONS: 40,
     POSITION_ITERATIONS: 40,
     FIXED_TIME_STEP: 1 / 60,
+    // 建車時把零件碰撞體外擴這麼多 px，讓車外緣接近連續實心、凹口變淺，
+    // 避免薄碰撞體（蹺蹺板長條、地圖邊界細線）插進輪子/方塊縫。方塊寬高各 +此值，輪子半徑 +此值/2。
+    COLLIDER_INFLATE: 6,
 };
 
 export const BATTLE = {
@@ -42,7 +45,9 @@ export const BATTLE = {
 };
 
 export const JOINT = {
-    WHEEL_FREQUENCY: 10,
+    WHEEL_FREQUENCY: 20,        // 懸吊彈簧頻率（Hz）。調高＝懸吊更硬、輪子相對車身位移更小（跳躍時不易看起來「拆開」）。
+                                // 注意 dt=1/60 下別超過 ~28Hz 以免不穩；搭配 JointFactory 的 dampingRatio=1 臨界阻尼不彈跳
+    WHEEL_DAMPING: 1.0,         // 懸吊阻尼比（1=臨界阻尼，不來回彈）
     WHEEL_MAX_TORQUE: 400000,
     WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
     WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）

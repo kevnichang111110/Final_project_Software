@@ -79,6 +79,7 @@ export default class JointFactory {
         else joint.localAxisA = cc.v2(0, 1);
 
         joint.frequency = JOINT.WHEEL_FREQUENCY;
+        (joint as any).dampingRatio = JOINT.WHEEL_DAMPING;   // 臨界阻尼，懸吊硬且不來回彈 → 輪子貼著車身不「拆開」
         joint.enableMotor = true;
 
         const drag = wheelNode.getComponent("Draggable") as any;
