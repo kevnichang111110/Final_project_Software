@@ -484,42 +484,21 @@ export default class BattleManager extends cc.Component {
         if (this.matchTimer <= 0) this.startSuddenDeath();
     }
 
-    // 統一 Box2D 的空中控制：車子永遠是動態體，騰空時只做兩件事——
-    //   (1) 重力縮放：所有零件 gravityScale 降到 AIRBOX.GRAVITY_SCALE（滯空更久）；落地還原 1。
-    //   (2) A/D 旋轉：對「核心」施扭矩（welds 帶動整車，同 updateAutoRight 模式）＋角速度阻尼收斂。
-    // 扭矩只施在核心 → 鬆脫的碎片不被驅動、自然掉落，不會被吸著一起轉。
+    // 空中按鍵旋轉（玩家唯一的空中特化；引擎參數與機器人完全一致，無重力縮放、無扭矩控制器）。
+    // 直接「設定」核心角速度，不施扭矩 → 不會累積、不可能愈轉愈快。
+    // 焊接（freq 0）把整車當剛體跟著核心轉；放開（moveDir=0）→ 角速度設 0 → 立即停，並壓掉輪子反作用造成的自轉。
     private updateAirControl(airborne: boolean) {
-        if (!this.playerRoot || !this.playerRoot.isValid || !this.playerCar) return;
-
-        const scale = airborne ? AIRBOX.GRAVITY_SCALE : 1;
-        this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
-            const nd = rb.node;
-            if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
-            rb.gravityScale = scale;
-        });
-
-        if (!airborne) return;
+        if (!airborne || !this.playerCar) return;
         const core = this.playerCar.coreNode;
         const coreRb = core ? core.getComponent(cc.RigidBody) : null;
         if (!coreRb) return;
-        // 速度目標式 P 控制：朝目標角速度收斂。moveDir：A/← = +1、D/→ = -1。
-        // 按住 → 收斂到 ±MAX_OMEGA 就停止加速（有上限、不會愈轉愈快）；放開（0）→ 拉回 0（旋轉停得下來）。
-        const targetOmega = this.moveDir * AIRBOX.MAX_OMEGA;
-        let torque = (targetOmega - coreRb.angularVelocity) * AIRBOX.TORQUE_GAIN;
-        torque = cc.misc.clampf(torque, -AIRBOX.MAX_TORQUE, AIRBOX.MAX_TORQUE);
-        (coreRb as any).applyTorque(torque, true);
+        // moveDir：A/← = +1、D/→ = -1、放開 = 0。單位：度/秒。
+        coreRb.angularVelocity = this.moveDir * AIRBOX.ROT_SPEED;
+        coreRb.awake = true;
     }
 
     private updatePlayerMovement() {
         if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return;
-
-        // 空中煞停輪子：馬達若繼續加速空轉的輪子，反作用扭矩會不斷灌進車身讓它一直轉。
-        // 用上一幀的 airborne（1 幀延遲無感）→ 騰空時把輪速歸零、停止驅動。
-        if (this.airborne) {
-            this.wheelSpeed = 0;
-            for (const j of this.playerCar.wheelJoints) j.motorSpeed = 0;
-            return;
-        }
 
         const targetSpeed = this.moveDir * JOINT.WHEEL_TARGET_SPEED;
         this.wheelSpeed += (targetSpeed - this.wheelSpeed) * JOINT.WHEEL_SMOOTHING;
