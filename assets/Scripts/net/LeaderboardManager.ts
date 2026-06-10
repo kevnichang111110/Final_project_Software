@@ -18,7 +18,8 @@ export default class LeaderboardManager extends cc.Component {
     fallbackLabel: cc.Label = null;
     @property({ tooltip: "顯示前幾名" })
     topN: number = 20;
-
+    @property({ type: [cc.SpriteFrame], tooltip: "8個頭像素材" })
+    avatarFrames: cc.SpriteFrame[] = [];
     onEnable() {
         console.log("====== 排行榜面板被打開了！ ======");
         FirebaseService.init();
@@ -57,6 +58,14 @@ export default class LeaderboardManager extends cc.Component {
                 this.setChildLabel(node, "name", r.name);
                 this.setChildLabel(node, "wins", `${r.wins}`);
                 this.setChildLabel(node, "score", `${r.bestScore}`);
+                
+                const avatarNode = node.getChildByName("avatar");
+                if (avatarNode && this.avatarFrames.length > 0) {
+                    const sprite = avatarNode.getComponent(cc.Sprite);
+                    // 確保 ID 不會超出陣列範圍 (防呆)
+                    const safeId = (r.avatarId >= 0 && r.avatarId < this.avatarFrames.length) ? r.avatarId : 0;
+                    if (sprite) sprite.spriteFrame = this.avatarFrames[safeId];
+                }
             });
             return;
         }

@@ -20,7 +20,7 @@ const firebaseConfig = {
 };
 // ⬆⬆⬆ ⬆⬆⬆
 
-export interface LeaderRow { name: string; wins: number; bestScore: number; }
+export interface LeaderRow { name: string; wins: number; bestScore: number; avatarId: number;}
 
 export default class FirebaseService {
     private static inited = false;
@@ -149,8 +149,11 @@ export default class FirebaseService {
                                 bestScore = doc.fields.bestScore.integerValue ? parseInt(doc.fields.bestScore.integerValue) : 
                                            (doc.fields.bestScore.doubleValue ? parseFloat(doc.fields.bestScore.doubleValue) : 0);
                             }
-                            
-                            out.push({ name, wins, bestScore });
+                            let avatarId = 0;
+                            if (doc.fields.avatarId) {
+                                avatarId = doc.fields.avatarId.integerValue ? parseInt(doc.fields.avatarId.integerValue) : 0;
+                            }
+                            out.push({ name, wins, bestScore, avatarId});
                         }
                     });
                 }
