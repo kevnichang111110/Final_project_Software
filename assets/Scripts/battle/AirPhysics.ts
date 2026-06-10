@@ -25,7 +25,7 @@ export default class AirPhysics {
     private comVel = cc.v2(0, 0);     // 質心線速度
     private omega = 0;                // 角速度（度/秒）
     private rot = 0;                  // 自進入空中以來累積旋轉（度）
-    private landCooldown = 0;         // 落地後沉澱倒數（秒）：>0 期間不准再接管，避免落地→彈一下→立刻又接管抓到尖刺速度
+    private recentExit = 0;           // 剛離開空中的計時器（秒）：>0 表示「剛落地」。不擋接管，只用來在快速重進空中時夾掉地板彈出的向上速度
 
     // 進入空中時記下每個零件：相對質心位移、初始角度、原本的 body type（落地還原用）
     private parts = new Map<cc.Node, { ox: number; oy: number; angle0: number; type0: number }>();
@@ -83,11 +83,11 @@ export default class AirPhysics {
             return true;
         }
 
-        // 尚未接管：落地冷卻倒數。冷卻期間先交給 Box2D 沉澱，不重新接管。
-        if (this.landCooldown > 0) this.landCooldown = Math.max(0, this.landCooldown - dt);
+        // 尚未接管：遞減「剛落地」計時器（只計時，不擋接管）。
+        if (this.recentExit > 0) this.recentExit = Math.max(0, this.recentExit - dt);
 
-        // 只有「真正騰空（沒著地、也沒貼牆）」且不在落地冷卻中才接管
-        if (grounded || onWall || this.landCooldown > 0) return false;
+        // 只有「真正騰空（沒著地、也沒貼牆）」才接管 → 一騰空就立刻接管，吃空中輕重力＋邊界夾制
+        if (grounded || onWall) return false;
         this.enterAir();
         if (!this.active) return false;
         this.integrate(dt, moveDir);
@@ -104,9 +104,46 @@ export default class AirPhysics {
         return out;
     }
 
+    // 焊接連通性檢查：以「還存在的關節」建無向鄰接，從核心 BFS，只回傳仍連到核心的零件。
+    // 關節掛在一端、connectedBody 指另一端（星狀焊 body→核心、輪/武器關節 父body→輪/武器）。
+    // 父件已死時其身上的關節被銷毀 → 鬆脫的輪子/武器/方塊連不到核心 → 被排除，不會被吸回去跟著空中旋轉。
+    private connectedToCore(bodies: cc.RigidBody[]): cc.RigidBody[] {
+        const core = this.coreNode;
+        if (!core || !core.isValid) return bodies;
+        const inSet = new Set<cc.Node>();
+        for (const rb of bodies) inSet.add(rb.node);
+        if (!inSet.has(core)) return bodies;   // 理論上核心一定在；保險用
+
+        const adj = new Map<cc.Node, cc.Node[]>();
+        const link = (a: cc.Node, b: cc.Node) => {
+            let la = adj.get(a); if (!la) { la = []; adj.set(a, la); } la.push(b);
+            let lb = adj.get(b); if (!lb) { lb = []; adj.set(b, lb); } lb.push(a);
+        };
+        for (const rb of bodies) {
+            const nd = rb.node;
+            nd.getComponents(cc.Joint).forEach(j => {
+                if (!j || !j.isValid) return;
+                const cb = j.connectedBody;
+                if (!cb || !cb.node || !cb.node.isValid) return;
+                if (inSet.has(cb.node)) link(nd, cb.node);
+            });
+        }
+
+        const reached = new Set<cc.Node>([core]);
+        const queue: cc.Node[] = [core];
+        while (queue.length) {
+            const cur = queue.pop()!;
+            const ns = adj.get(cur);
+            if (!ns) continue;
+            for (const nx of ns) if (!reached.has(nx)) { reached.add(nx); queue.push(nx); }
+        }
+        return bodies.filter(rb => reached.has(rb.node));
+    }
+
     private enterAir() {
         const core = this.coreNode;
-        const bodies = this.livingBodies();
+        // 只把「仍焊接連到核心」的零件當空中剛體；鬆脫零件（焊接被撞斷／父件已死）交給 Box2D 掉落。
+        const bodies = this.connectedToCore(this.livingBodies());
         if (!core || !core.isValid || bodies.length === 0) { this.active = false; return; }
 
         // 用核心「目前位姿」+ 標準版型，重建每個零件的「正確（未散架）世界位置」。
@@ -141,6 +178,9 @@ export default class AirPhysics {
         // 進空中初速夾制：擋住「落地瞬間被地板彈出的退化尖刺」被當成空中初速 → 不會誇張噴飛
         const spd = this.comVel.mag();
         if (spd > AIRPHYS.MAX_ENTER_SPEED) this.comVel.mulSelf(AIRPHYS.MAX_ENTER_SPEED / spd);
+        // 剛落地又馬上重進空中（graze/bounce）：夾掉地板彈出的「向上」速度，避免瞬間噴起來。
+        // 水平速度保留 → 開車連續性不變；落地真正的向上發射（彈簧）多半在著地狀態由 Box2D 處理，不走這條。
+        if (this.recentExit > 0 && this.comVel.y > 0) this.comVel.y = 0;
 
         const coreRb = core.getComponent(cc.RigidBody);
         this.omega = cc.misc.clampf(coreRb ? coreRb.angularVelocity : 0, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
@@ -244,6 +284,6 @@ export default class AirPhysics {
 
         this.parts.clear();
         this.active = false;
-        this.landCooldown = AIRPHYS.LAND_COOLDOWN;   // 落地後沉澱一小段，避免立刻又接管
+        this.recentExit = AIRPHYS.RE_ENTER_WINDOW;   // 標記「剛落地」：此窗內若又重進空中，會夾掉地板彈出的向上速度
     }
 }
