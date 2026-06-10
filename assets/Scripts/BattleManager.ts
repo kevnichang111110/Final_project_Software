@@ -13,6 +13,7 @@ import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import WallRide from "./battle/WallRide";
+import AirPhysics from "./battle/AirPhysics";
 import StuckRescue from "./battle/StuckRescue";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
@@ -82,6 +83,7 @@ export default class BattleManager extends cc.Component {
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
     private wallRide: WallRide | null = null;
+    private airPhysics: AirPhysics | null = null;
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
     private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
@@ -246,6 +248,7 @@ export default class BattleManager extends cc.Component {
         if (this.mapLoader) this.mapLoader.loadRandomMap();
 
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
+        this.airPhysics = new AirPhysics(this.playerCar, this.playerRoot, GROUP.PLAYER_PART);
         this.playerRescue = FLOW.USE_STUCK_RESCUE
             ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
             : null;
@@ -332,11 +335,14 @@ export default class BattleManager extends cc.Component {
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
         this.updateStuckRescue(dt);
-        const touching = this.isTouchingAnything();   // 每幀算一次，翻滾與翻正共用
-        if (this.wallRide) this.wallRide.update(dt);
-        this.updateAirRotation(touching, dt);   // 只有完全騰空（無接觸）才翻滾
-        this.updateAutoRight(touching);         // 接觸地面且傾斜 → 自動翻正
-        this.updateJet();
+        const touching = this.isTouchingAnything();   // 每幀算一次，空中物理/爬牆/翻正共用
+        // 完全騰空 → 客製化空中物理接管（繞質心旋轉 + 自由落體）；接管時其餘地面邏輯讓位
+        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, touching) : false;
+        if (!inAir) {
+            if (this.wallRide) this.wallRide.update(dt);
+            this.updateAutoRight(touching);         // 接觸地面且傾斜 → 自動翻正
+            this.updateJet();                       // 空中為純自由落體，不施噴射推力
+        }
         this.updatePlayerMelee(dt);
     }
 
@@ -470,20 +476,6 @@ export default class BattleManager extends cc.Component {
 
     // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
     // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
-    private updateAirRotation(touching: boolean, dt: number) {
-        if (!this.playerCar || !this.playerCar.coreNode) return;
-        if (touching) return;   // 有接觸 → 不翻滾（也不介入旋轉）
-        const rb = this.playerCar.coreNode.getComponent(cc.RigidBody);
-        if (!rb) return;
-
-        // 直接控制角速度：以 SPIN_ACCEL 的步進開向目標，絕不過衝、不發散。
-        // 按鍵 → ±SPIN_TARGET；沒按 → 0（把亂轉穩定收回）。
-        const target = this.moveDir * AIR.SPIN_TARGET;
-        const cur = rb.angularVelocity;
-        const maxStep = AIR.SPIN_ACCEL * dt;
-        rb.angularVelocity = cur + cc.misc.clampf(target - cur, -maxStep, maxStep);
-    }
-
     // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。
     // 牆/斜面交給 WallRide 對齊；在地面小傾斜時不介入，避免兩套對齊力互打造成亂彈。
     private updateAutoRight(touching: boolean) {
