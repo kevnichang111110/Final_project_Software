@@ -48,7 +48,8 @@ export const JOINT = {
     WHEEL_FREQUENCY: 20,        // 懸吊彈簧頻率（Hz）。調高＝懸吊更硬、輪子相對車身位移更小（跳躍時不易看起來「拆開」）。
                                 // 注意 dt=1/60 下別超過 ~28Hz 以免不穩；搭配 JointFactory 的 dampingRatio=1 臨界阻尼不彈跳
     WHEEL_DAMPING: 1.0,         // 懸吊阻尼比（1=臨界阻尼，不來回彈）
-    WHEEL_MAX_TORQUE: 400000,
+    WHEEL_MAX_TORQUE: 700000,   // 馬達最大扭矩（馬力）。調高 → 爬坡/爬牆更有力（之前 400000 太低爬不動）
+    WHEEL_FRICTION: 0.9,        // 輪子摩擦力（抓地力）。Box2D 預設 ~0.2 太滑，斜坡會打滑空轉；調高才爬得上去
     WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
     WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）
     WELD_FREQUENCY: 0,

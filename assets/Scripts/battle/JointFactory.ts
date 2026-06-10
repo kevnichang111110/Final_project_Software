@@ -65,6 +65,12 @@ export default class JointFactory {
         const wheelRb = wheelNode.getComponent(cc.RigidBody);
         if (!parentRb || !wheelRb) return null;
 
+        // 抓地力：把輪子碰撞器摩擦力調高（預設 ~0.2 太滑，斜坡打滑）。Bounce 輪已改過 restitution，這裡只動 friction 不衝突。
+        (wheelNode.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[]).forEach(c => {
+            c.friction = JOINT.WHEEL_FRICTION;
+            if ((c as any).apply) (c as any).apply();   // 已建立的 fixture 需 apply 才生效
+        });
+
         const joint = parentBox.addComponent(cc.WheelJoint);
         joint.connectedBody = wheelRb;
 

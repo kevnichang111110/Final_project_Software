@@ -76,6 +76,11 @@ export default class CarBuilder {
 
             CarBuilder.inflateCollider(node);   // 碰撞體稍微外擴，讓車外緣接近實心、薄物件插不進凹口
 
+            // 連續碰撞偵測（CCD）：高速移動時避免「穿進」障礙物 / 翹翹板後卡在裡面
+            //（尤其 Bot 用純 Box2D，沒有玩家 AirPhysics 的掃掠保護）。
+            const partRb = node.getComponent(cc.RigidBody);
+            if (partRb) partRb.bullet = true;
+
             result.partsMap.set(`${data.gridX},${data.gridY}`, node);
 
             // 紀錄遠程武器節點。玩家的槍一律做成「跟隨滑鼠的砲塔」；BOT 的槍維持焊死直射。
