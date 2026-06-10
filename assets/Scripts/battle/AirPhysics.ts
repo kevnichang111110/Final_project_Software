@@ -212,11 +212,13 @@ export default class AirPhysics {
         }
     }
 
-    // 交回 Box2D：把零件切回原本 type，並灌入「剛體速度場」v = comVel + ω × r，落地銜接平順
+    // 交回 Box2D：把零件切回原本 type，並灌入縮小過的「剛體速度場」v = (comVel + ω × r) × LAND_VEL_SCALE。
+    // 縮小銜接速度 → 落地很輕、不會彈起來再進空中→再落地→越彈越兇；車子直接停在地板上。
     private exitAir() {
         const rad = this.rot * DEG2RAD;
         const cos = Math.cos(rad), sin = Math.sin(rad);
         const omegaRad = this.omega * DEG2RAD;
+        const s = AIRPHYS.LAND_VEL_SCALE;
 
         this.parts.forEach((p, nd) => {
             if (!nd || !nd.isValid) return;
@@ -228,8 +230,8 @@ export default class AirPhysics {
 
             rb.type = p.type0;
             rb.enabledContactListener = true;   // 還原 Dynamic 後補開碰撞監聽，否則落地後收不到傷害
-            rb.linearVelocity = cc.v2(this.comVel.x - omegaRad * ry, this.comVel.y + omegaRad * rx);
-            rb.angularVelocity = this.omega;
+            rb.linearVelocity = cc.v2((this.comVel.x - omegaRad * ry) * s, (this.comVel.y + omegaRad * rx) * s);
+            rb.angularVelocity = this.omega * s;
             rb.awake = true;
         });
 
