@@ -113,18 +113,57 @@ export default class FirebaseService {
         ).catch((e: any) => cc.warn("[Firebase] 分數更新失敗", e));
     }
 
-    /** 取排行榜（依勝場由多到少） */
     static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
-        console.log("leader");
-        if (!this.isReady()) return Promise.resolve([]);
-        return firebase.firestore().collection("users").get()
-            .then((snap: any) => {
+        console.log("【程式碼解法】改用 REST API 繞過 SDK 抓取排行榜...");
+        
+        // 直接對準你的 ssdfinal-c6446 專案資料庫發送請求
+        const projectId = "ssdfinal-c6446"; 
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
+        
+        return fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error("HTTP 狀態碼異常: " + res.status);
+                return res.json(); // 將回傳的文字轉成 JSON
+            })
+            .then(data => {
+                console.log("REST API 成功抓到原始資料！", data);
+                
                 const out: LeaderRow[] = [];
-                snap.forEach((d: any) => {
-                    const v = d.data();
-                    out.push({ name: v.name || "玩家", wins: v.wins || 0, bestScore: v.bestScore || 0 });
-                });
-                return out;
+                
+                // 防呆：如果資料庫完全沒資料，data.documents 會是 undefined
+                if (data.documents) {
+                    data.documents.forEach((doc: any) => {
+                        if (doc.fields) {
+                            // 解析 Firestore 特殊的 JSON 結構
+                            const name = doc.fields.name ? doc.fields.name.stringValue : "玩家";
+                            
+                            // 處理數字 (Firestore 會根據存入方式判斷為 integerValue 或 doubleValue)
+                            let wins = 0;
+                            if (doc.fields.wins) {
+                                wins = doc.fields.wins.integerValue ? parseInt(doc.fields.wins.integerValue) : 
+                                      (doc.fields.wins.doubleValue ? parseFloat(doc.fields.wins.doubleValue) : 0);
+                            }
+                            
+                            let bestScore = 0;
+                            if (doc.fields.bestScore) {
+                                bestScore = doc.fields.bestScore.integerValue ? parseInt(doc.fields.bestScore.integerValue) : 
+                                           (doc.fields.bestScore.doubleValue ? parseFloat(doc.fields.bestScore.doubleValue) : 0);
+                            }
+                            
+                            out.push({ name, wins, bestScore });
+                        }
+                    });
+                }
+                
+                // 因為 REST API 預設沒有排序，我們在前端手動按勝場 (wins) 由大到小排序
+                out.sort((a, b) => b.wins - a.wins);
+                
+                // 回傳前 N 名 (依照傳入的 limit)
+                return out.slice(0, limit);
+            })
+            .catch(err => {
+                console.error("REST API 抓取徹底失敗：", err);
+                return [];
             });
     }
 }
