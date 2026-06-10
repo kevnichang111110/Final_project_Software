@@ -258,6 +258,7 @@ export default class BattleManager extends cc.Component {
 
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
         this.airPhysics = new AirPhysics(this.playerCar, this.playerRoot, GROUP.PLAYER_PART);
+        if (this.mapLoader) this.airPhysics.setBoundary(this.mapLoader.getBoundary());   // 把車夾在場內、避免空中飛出地圖
         this.playerRescue = FLOW.USE_STUCK_RESCUE
             ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
             : null;
@@ -409,7 +410,7 @@ export default class BattleManager extends cc.Component {
 
         // 1) 旋轉瞄準（每幀，無論是否開火）
         for (const c of cannons) {
-            if (c.node && c.node.isValid) this.aimTurret(c.node, c.joint);
+            if (c.node && c.node.isValid) this.aimTurret(c);
         }
 
         // 2) 開火
@@ -431,30 +432,36 @@ export default class BattleManager extends cc.Component {
         this.mouseCannonCooldown = interval;
     }
 
-    // 讓砲塔的砲管轉向游標：用 P 控制器驅動關節馬達，關節本身的角度上下限會夾住可轉範圍。
-    private aimTurret(weaponNode: cc.Node, joint: cc.RevoluteJoint) {
+    // 讓砲管轉向游標：直接設武器剛體角速度（不用馬達 → 不會把反作用扭矩帶到車身），
+    // 目標角先夾在 ±HALF_ARC（相對母體朝向）→ 砲管/準星線不會超出弧度、也不會去頂硬體上限。
+    private aimTurret(c: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }) {
+        const weaponNode = c.node, joint = c.joint;
         if (!joint || !joint.isValid) return;
+        const weaponRb = weaponNode.getComponent(cc.RigidBody);
+        const parent = joint.node;   // 關節所在的母體 body
+        if (!weaponRb || !parent || !parent.isValid) return;
 
         const center = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
         const fp = weaponNode.getChildByName("firepoint");
         const muzzle = fp
             ? fp.convertToWorldSpaceAR(cc.v2(0, 0))
             : weaponNode.convertToWorldSpaceAR(cc.v2(40, 0));
-
-        const barrelDir = muzzle.sub(center);
-        const barrelAngle = Math.atan2(barrelDir.y, barrelDir.x) * 180 / Math.PI;
+        const cur = Math.atan2(muzzle.y - center.y, muzzle.x - center.x) * 180 / Math.PI;
 
         const toMouse = this.mouseWorldPos.sub(center);
         if (toMouse.mag() < 1) return;
-        const aimAngle = Math.atan2(toMouse.y, toMouse.x) * 180 / Math.PI;
+        const aim = Math.atan2(toMouse.y, toMouse.x) * 180 / Math.PI;
 
-        let diff = aimAngle - barrelAngle;
-        while (diff > 180) diff -= 360;
-        while (diff < -180) diff += 360;
+        // 弧度中心隨母體（車身）旋轉；把目標夾在 ±HALF_ARC 內
+        const base = parent.angle + c.mountOffset;
+        let off = aim - base;
+        while (off > 180) off -= 360; while (off < -180) off += 360;
+        off = cc.misc.clampf(off, -MOUSE_TURRET.HALF_ARC, MOUSE_TURRET.HALF_ARC);
+        const target = base + off;
 
-        joint.enableMotor = true;
-        // 玩家零件是鏡像(scaleX 反向)，馬達正轉會讓砲管角度「反向」變化，所以這裡取負號才會朝游標
-        joint.motorSpeed = cc.misc.clampf(-diff * MOUSE_TURRET.AIM_GAIN, -MOUSE_TURRET.AIM_SPEED, MOUSE_TURRET.AIM_SPEED);
+        let err = target - cur;
+        while (err > 180) err -= 360; while (err < -180) err += 360;
+        weaponRb.angularVelocity = cc.misc.clampf(err * MOUSE_TURRET.AIM_GAIN, -MOUSE_TURRET.AIM_SPEED, MOUSE_TURRET.AIM_SPEED);
     }
 
     private updateMatchTimer(dt: number) {

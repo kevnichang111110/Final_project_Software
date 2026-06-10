@@ -56,6 +56,20 @@ export default class AirPhysics {
     isActive(): boolean { return this.active; }
     getCoM(): cc.Vec2 { return cc.v2(this.com.x, this.com.y); }
 
+    // 地圖邊界多邊形（≈世界座標），由 BattleManager 載圖後傳入，用來把車夾在場內、避免飛出地圖。
+    private boundary: cc.Vec2[] = [];
+    setBoundary(pts: cc.Vec2[]) { this.boundary = pts || []; }
+
+    private pointInPolygon(x: number, y: number): boolean {
+        const b = this.boundary;
+        let inside = false;
+        for (let i = 0, j = b.length - 1; i < b.length; j = i++) {
+            const xi = b[i].x, yi = b[i].y, xj = b[j].x, yj = b[j].y;
+            if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+        }
+        return inside;
+    }
+
     // 回傳是否正在接管空中物理。grounded=著地、onWall=貼牆。
     // 黏著式：一旦接管，只有「著地」才交回 Box2D；貼牆/掠過都不打斷 → 整車當單一剛體穩定旋轉、不亂跳。
     update(dt: number, moveDir: number, grounded: boolean, onWall: boolean): boolean {
@@ -149,15 +163,37 @@ export default class AirPhysics {
         this.omega *= Math.max(0, 1 - AIRPHYS.SPIN_DAMP * dt);
         this.rot += this.omega * dt;
 
-        // 下落：自由落體（只受空中重力，水平速度不變）
-        this.comVel.y += AIRPHYS.GRAVITY_Y * dt;
-        this.com.x += this.comVel.x * dt;
-        this.com.y += this.comVel.y * dt;
-
-        // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
         const rad = this.rot * DEG2RAD;
         const cos = Math.cos(rad), sin = Math.sin(rad);
 
+        // 下落：自由落體（候選質心，先不提交）
+        const newVelX = this.comVel.x;
+        const newVelY = this.comVel.y + AIRPHYS.GRAVITY_Y * dt;
+        let newComX = this.com.x + newVelX * dt;
+        let newComY = this.com.y + newVelY * dt;
+
+        // 邊界夾制：若任一零件的新位置會跑到場外 → 本幀不平移、速度歸零（停在場內、不衝出地圖）
+        if (this.boundary.length >= 3) {
+            let outside = false;
+            for (const rb of this.livingBodies()) {
+                const p = this.parts.get(rb.node);
+                if (!p) continue;
+                const rx = p.ox * cos - p.oy * sin;
+                const ry = p.ox * sin + p.oy * cos;
+                if (!this.pointInPolygon(newComX + rx, newComY + ry)) { outside = true; break; }
+            }
+            if (outside) {
+                newComX = this.com.x; newComY = this.com.y;
+                this.comVel.x = 0; this.comVel.y = 0;
+            } else {
+                this.comVel.x = newVelX; this.comVel.y = newVelY;
+            }
+        } else {
+            this.comVel.x = newVelX; this.comVel.y = newVelY;
+        }
+        this.com.x = newComX; this.com.y = newComY;
+
+        // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
         for (const rb of this.livingBodies()) {
             const nd = rb.node;
             const p = this.parts.get(nd);

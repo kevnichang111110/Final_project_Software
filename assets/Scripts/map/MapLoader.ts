@@ -77,6 +77,10 @@ export default class MapLoader extends cc.Component {
 
     private rng: () => number = Math.random;
     private current: cc.Node | null = null;   // 目前載入的地圖實例（連同視覺與物件都掛在它底下）
+    private boundaryPoints: cc.Vec2[] = [];    // 目前地圖邊界多邊形（≈世界座標），供外部（AirPhysics）取用
+
+    // 目前地圖的邊界多邊形點（≈世界座標）。沒有地圖時回傳空陣列。
+    public getBoundary(): cc.Vec2[] { return this.boundaryPoints; }
 
     start() {
         // BattleManager 若有綁定 mapLoader，會在 onLoad 階段先呼叫 loadRandomMap()；
@@ -107,12 +111,13 @@ export default class MapLoader extends cc.Component {
         map.setPosition(0, 0);
         this.current = map;
 
-        // 3) 找邊界、讀點（轉成 current 的本地座標）
+        // 3) 找邊界、讀點（轉成 current 的本地座標；map 在原點 → 約等於世界座標）
         const inner = this.readBoundaryPoints(map);
         if (!inner || inner.length < 3) {
             cc.warn(`[MapLoader] 地圖「${prefab.name}」找不到有效的邊界 PhysicsChainCollider`);
             return;
         }
+        this.boundaryPoints = inner;   // 供 AirPhysics 把車夾在場內用
 
         // 4) 視覺
         if (this.autoDrawVisuals) this.drawArena(inner, this.outwardNormals(inner));

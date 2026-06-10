@@ -27,7 +27,8 @@ export interface BuiltCar {
     weaponJoints: cc.RevoluteJoint[];
     wheelMultipliers: Map<cc.WheelJoint, number>;
     wheelAbilities: any[];           // WheelAbility[]（噴射/彈跳）
-    mouseCannons: { node: cc.Node, joint: cc.RevoluteJoint }[];  // 滑鼠砲：節點 + 旋轉關節
+    // 滑鼠砲：節點 + 旋轉關節 + 建立當下「砲管世界角 − 母體世界角」（弧度中心，瞄準夾角用）
+    mouseCannons: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }[];
 }
 
 export interface BuildParams {
@@ -153,7 +154,13 @@ export default class CarBuilder {
                     const halfArc = mc && typeof mc.aimHalfArc === "number" ? mc.aimHalfArc : MOUSE_TURRET.HALF_ARC;
                     const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, halfArc, MOUSE_TURRET.TORQUE);
                     if (tj) {
-                        result.mouseCannons.push({ node, joint: tj });
+                        // 弧度中心：建立當下砲管世界角 − 母體(關節所在 body)世界角
+                        const c0 = node.convertToWorldSpaceAR(cc.v2(0, 0));
+                        const fp0 = node.getChildByName("firepoint");
+                        const m0 = fp0 ? fp0.convertToWorldSpaceAR(cc.v2(0, 0)) : node.convertToWorldSpaceAR(cc.v2(40, 0));
+                        const barrel0 = Math.atan2(m0.y - c0.y, m0.x - c0.x) * 180 / Math.PI;
+                        const mountOffset = barrel0 - (tj.node ? tj.node.angle : 0);
+                        result.mouseCannons.push({ node, joint: tj, mountOffset });
                         CarBuilder.addAimLine(node);
                     }
                 } else {
