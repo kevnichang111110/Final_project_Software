@@ -49,7 +49,9 @@ export default class Health extends cc.Component {
     private invincibilityDuration: number = DAMAGE.INVINCIBILITY;
 
     // 血條狀態
-    private inBattle: boolean = false;
+    // 由 BattleManager 在開戰時設 true、結束時設 false（取代不可靠的 getScene().name === "game" 判斷）。
+    // 用靜態旗標，避免「場景名稱在 runtime 不是 'game'」造成血條永遠不顯示。
+    public static activeInBattle: boolean = false;
     private hpBarNode: cc.Node | null = null;
     private hpBarGraphics: cc.Graphics | null = null;
     private hitTimer: number = 0;
@@ -63,7 +65,7 @@ export default class Health extends cc.Component {
         if (rb) rb.enabledContactListener = true;
 
         // 只有在戰鬥場景才需要血條
-        this.inBattle = cc.director.getScene().name === "game";
+        // inBattle 改由 BattleManager 設定的 Health.activeInBattle 決定（見 update/forceShowBar/onBeginContact）
     }
 
     onDestroy() {
@@ -125,7 +127,7 @@ export default class Health extends cc.Component {
     }
 
     update(dt: number) {
-        if (!this.inBattle || !this.showDebugHPBar) return;
+        if (!Health.activeInBattle || !this.showDebugHPBar) return;
         if (!this.node || !this.node.isValid) return;
 
         // 懶建立：確保父層已就緒才建血條
@@ -190,7 +192,7 @@ export default class Health extends cc.Component {
     // 傷害判定（行為與原版一致）
     // ====================================================================
     onBeginContact(contact: cc.PhysicsContact, selfCollider: cc.PhysicsCollider, otherCollider: cc.PhysicsCollider) {
-        if (cc.director.getScene().name === "Shop") return;
+        if (!Health.activeInBattle) return;   // 非戰鬥（如商店）不判定傷害
         if (this.isInvincible || this.currentHP <= 0) {
             cc.log(`[HP] contact IGNORED on "${this.node.name}" (invincible=${this.isInvincible} dead=${this.currentHP <= 0})`);
             return;
@@ -315,7 +317,7 @@ export default class Health extends cc.Component {
 
     // 受擊當下立刻把血條建好、釘到零件上方並畫成明顯。不靠 update（即使 update 沒跑也看得到）。
     private forceShowBar() {
-        if (!this.inBattle || !this.showDebugHPBar) { cc.log(`[HP] forceShowBar SKIP inBattle=${this.inBattle} show=${this.showDebugHPBar}`); return; }
+        if (!Health.activeInBattle || !this.showDebugHPBar) { cc.log(`[HP] forceShowBar SKIP active=${Health.activeInBattle} show=${this.showDebugHPBar}`); return; }
         if (!this.node || !this.node.isValid) return;
         if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) { cc.log("[HP] forceShowBar SKIP: bar not created"); return; } }
         if (!this.hpBarNode.isValid) return;

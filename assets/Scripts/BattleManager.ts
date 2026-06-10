@@ -19,6 +19,7 @@ import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
 import MapLoader from "./map/MapLoader";
 import HitFeedback from "./fx/HitFeedback";
+import Health from "./HealthManager";
 
 const { ccclass, property } = cc._decorator;
 
@@ -101,6 +102,8 @@ export default class BattleManager extends cc.Component {
     // 生命週期
     // ====================================================================
     onLoad() {
+        Health.activeInBattle = true;   // 進戰鬥場景 → 開啟血條/傷害判定（取代不可靠的場景名稱判斷）
+
         const physics = cc.director.getPhysicsManager();
         physics.enabled = true;
         (physics as any).enabledContactListener = true;
@@ -128,6 +131,7 @@ export default class BattleManager extends cc.Component {
     }
 
     onDestroy() {
+        Health.activeInBattle = false;   // 離開戰鬥場景 → 關閉（商店等場景不顯示血條/不判傷）
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_DOWN, this.onKeyDown, this);
         cc.systemEvent.off(cc.SystemEvent.EventType.KEY_UP, this.onKeyUp, this);
 
