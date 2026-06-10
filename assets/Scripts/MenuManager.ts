@@ -1,4 +1,5 @@
 import GameManager from "./GameManager";
+import FirebaseService from "./net/FirebaseService";
 const { ccclass, property } = cc._decorator;
 
 @ccclass
@@ -10,6 +11,12 @@ export default class MenuManager extends cc.Component {
 
     @property(cc.AudioClip)
     bgmClip: cc.AudioClip |null= null;
+
+    @property({ type: cc.Node, tooltip: "排行榜彈窗面板" })
+    leaderboardPanel: cc.Node = null;
+
+    @property({ type: cc.Node, tooltip: "個人檔案彈窗面板" })
+    ProfilePanel: cc.Node = null;
 
     private bgmAudioID: number = -1;
     onLoad() {
@@ -26,8 +33,19 @@ export default class MenuManager extends cc.Component {
         cc.director.loadScene("SelectMode");
     }
 
-    onLeaderboardButtonClick() {
-        cc.director.loadScene("Leaderboard");
+   onLeaderboardButtonClick() {
+        if (this.leaderboardPanel) {
+            this.leaderboardPanel.active = true; // 顯示排行榜
+        } else {
+            cc.error("尚未在編輯器中關聯 Leaderboard Panel！");
+        }
+    }
+    onProfileButtonClick() {
+        if (this.ProfilePanel) {
+            this.ProfilePanel.active = true; // 顯示排行榜
+        } else {
+            cc.error("尚未在編輯器中關聯profileboard Panel！");
+        }
     }
     Singleplayer() {
         GameManager.resetAllData();
@@ -48,6 +66,11 @@ export default class MenuManager extends cc.Component {
             console.error("尚未在編輯器中關聯 Settings Prefab！");
         }
     }
-    
+    addTestWin() {
+    // 呼叫 FirebaseService 裡的勝場增加功能
+    FirebaseService.incrementWins().then(() => {
+        cc.log("勝場加 1 成功！");
+    });
+}
 
 }
