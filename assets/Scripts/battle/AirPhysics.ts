@@ -259,12 +259,9 @@ export default class AirPhysics {
         }
     }
 
-    // 交回 Box2D：把零件切回原本 type，並灌入縮小過的「剛體速度場」v = (comVel + ω × r) × LAND_VEL_SCALE。
-    // 縮小銜接速度 → 落地很輕、不會彈起來再進空中→再落地→越彈越兇；車子直接停在地板上。
+    // 交回 Box2D：把零件切回原本 type，灌入縮小過的「平移動量」，並把翻滾量歸零。
+    // 落地一律不帶旋轉（angularVelocity=0、不灌 ω×r 切線分量）→ 殘留旋轉不會在地面與焊接互抗 → 落地乾淨停住、最穩。
     private exitAir() {
-        const rad = this.rot * DEG2RAD;
-        const cos = Math.cos(rad), sin = Math.sin(rad);
-        const omegaRad = this.omega * DEG2RAD;
         const s = AIRPHYS.LAND_VEL_SCALE;
 
         this.parts.forEach((p, nd) => {
@@ -272,16 +269,14 @@ export default class AirPhysics {
             const rb = nd.getComponent(cc.RigidBody);
             if (!rb) return;
 
-            const rx = p.ox * cos - p.oy * sin;
-            const ry = p.ox * sin + p.oy * cos;
-
             rb.type = p.type0;
             rb.enabledContactListener = true;   // 還原 Dynamic 後補開碰撞監聽，否則落地後收不到傷害
-            rb.linearVelocity = cc.v2((this.comVel.x - omegaRad * ry) * s, (this.comVel.y + omegaRad * rx) * s);
-            rb.angularVelocity = this.omega * s;
+            rb.linearVelocity = cc.v2(this.comVel.x * s, this.comVel.y * s);   // 只保留平移動量
+            rb.angularVelocity = 0;             // 落地翻滾量歸零
             rb.awake = true;
         });
 
+        this.omega = 0;                         // 清掉殘留角速度（下次 enterAir 會重新起始）
         this.parts.clear();
         this.active = false;
         this.recentExit = AIRPHYS.RE_ENTER_WINDOW;   // 標記「剛落地」：此窗內若又重進空中，會夾掉地板彈出的向上速度
