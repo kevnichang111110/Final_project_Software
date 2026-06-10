@@ -191,7 +191,10 @@ export default class Health extends cc.Component {
     // ====================================================================
     onBeginContact(contact: cc.PhysicsContact, selfCollider: cc.PhysicsCollider, otherCollider: cc.PhysicsCollider) {
         if (cc.director.getScene().name === "Shop") return;
-        if (this.isInvincible || this.currentHP <= 0) return;
+        if (this.isInvincible || this.currentHP <= 0) {
+            cc.log(`[HP] contact IGNORED on "${this.node.name}" (invincible=${this.isInvincible} dead=${this.currentHP <= 0})`);
+            return;
+        }
 
         const myGroup = this.node.group;
         const otherGroup = otherCollider.node.group;
@@ -199,6 +202,7 @@ export default class Health extends cc.Component {
         // --- 子彈 ---
         const bullet = otherCollider.node.getComponent("Bullet") as Bullet;
         if (bullet) {
+            cc.log(`[HP] contact BULLET on "${this.node.name}"`);
             // 無差別子彈（滑鼠砲）：不分敵我都受傷
             if (bullet.damagesAll) {
                 const dmg = isWeaponNode(this.node) ? bullet.damage * DAMAGE.BULLET_VS_WEAPON : bullet.damage;
@@ -241,6 +245,7 @@ export default class Health extends cc.Component {
         rb2.getLinearVelocityFromWorldPoint(p, v2);
 
         const relativeVelocity = v1.sub(v2).mag();
+        cc.log(`[HP] contact OPPONENT on "${this.node.name}" relV=${relativeVelocity.toFixed(0)} (threshold=${DAMAGE.COLLISION_THRESHOLD})`);
 
         if (relativeVelocity > DAMAGE.COLLISION_THRESHOLD) {
             let damage = (relativeVelocity - DAMAGE.COLLISION_THRESHOLD) / DAMAGE.COLLISION_DIVISOR;

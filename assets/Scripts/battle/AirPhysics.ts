@@ -132,6 +132,7 @@ export default class AirPhysics {
             const pr = proper.get(nd)!;
             this.parts.set(nd, { ox: pr.wx - this.com.x, oy: pr.wy - this.com.y, angle0: pr.ang, type0: rb.type });
             rb.type = cc.RigidBodyType.Kinematic;
+            rb.enabledContactListener = true;   // 切 type 會重置碰撞監聽，補開回來，否則出空中後就收不到傷害
             rb.linearVelocity = cc.v2(0, 0);
             rb.angularVelocity = 0;
         }
@@ -191,6 +192,7 @@ export default class AirPhysics {
             const ry = p.ox * sin + p.oy * cos;
 
             rb.type = p.type0;
+            rb.enabledContactListener = true;   // 還原 Dynamic 後補開碰撞監聽，否則落地後收不到傷害
             rb.linearVelocity = cc.v2(this.comVel.x - omegaRad * ry, this.comVel.y + omegaRad * rx);
             rb.angularVelocity = this.omega;
             rb.awake = true;
