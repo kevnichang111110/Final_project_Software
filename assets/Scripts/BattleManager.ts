@@ -454,14 +454,8 @@ export default class BattleManager extends cc.Component {
         if (toMouse.mag() < 1) return;
         const aim = Math.atan2(toMouse.y, toMouse.x) * 180 / Math.PI;
 
-        // 弧度中心隨母體（車身）旋轉；把目標夾在 ±HALF_ARC 內
-        const base = parent.angle + c.mountOffset;
-        let off = aim - base;
-        while (off > 180) off -= 360; while (off < -180) off += 360;
-        off = cc.misc.clampf(off, -MOUSE_TURRET.HALF_ARC, MOUSE_TURRET.HALF_ARC);
-        const target = base + off;
-
-        let err = target - cur;
+        // 不限制弧度：砲管直接朝游標（360° 自由瞄準）
+        let err = aim - cur;
         while (err > 180) err -= 360; while (err < -180) err += 360;
 
         // 直接設角度，每幀轉動量以 AIM_SPEED（度/秒）設上限（轉速感跟原本一致），

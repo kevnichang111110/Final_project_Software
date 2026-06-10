@@ -166,8 +166,7 @@ export default class CarBuilder {
                 const gun = !!drag2 && drag2.weaponMode === WeaponMode.Gun;
                 const turret = !!mc || (side === "PLAYER" && gun);
                 if (turret) {
-                    const halfArc = mc && typeof mc.aimHalfArc === "number" ? mc.aimHalfArc : MOUSE_TURRET.HALF_ARC;
-                    const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, halfArc, MOUSE_TURRET.TORQUE);
+                    const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, MOUSE_TURRET.TORQUE);
                     if (tj) {
                         // 弧度中心：建立當下砲管世界角 − 母體(關節所在 body)世界角
                         const c0 = node.convertToWorldSpaceAR(cc.v2(0, 0));

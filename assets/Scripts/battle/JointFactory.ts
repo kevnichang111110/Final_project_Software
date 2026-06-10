@@ -142,13 +142,12 @@ export default class JointFactory {
         return joint;
     }
 
-    // 旋轉砲塔關節（滑鼠砲用）：以安裝時的朝向為中心，可在 ±halfArc 範圍內轉動瞄準。
+    // 旋轉砲塔關節（滑鼠砲用）：可 360° 自由旋轉瞄準（不限制角度）。
     static createTurretJoint(
         weaponNode: cc.Node,
         partMap: Map<string, cc.Node>,
         x: number,
         y: number,
-        halfArc: number,
         torque: number
     ): cc.RevoluteJoint | null {
 
@@ -169,10 +168,8 @@ export default class JointFactory {
         joint.connectedBody = weaponRb;
         joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
         joint.connectedAnchor = weaponNode.convertToNodeSpaceAR(worldPos);
-        // 角度上限：建立當下砲塔在 0 偏移，限制在 ±halfArc → 砲管/準星線硬體上不會超出弧度（備援）。
-        joint.enableLimit = true;
-        joint.lowerAngle = -halfArc;
-        joint.upperAngle = halfArc;
+        // 不限制旋轉角度 → 砲塔可 360° 自由瞄準（瞄準由 BattleManager.aimTurret 直接設角度）。
+        joint.enableLimit = false;
         // 不用馬達瞄準（馬達會把反作用扭矩帶到車身讓整台車轉）。改由 BattleManager.aimTurret 直接設角速度。
         joint.enableMotor = false;
         joint.maxMotorTorque = torque;
