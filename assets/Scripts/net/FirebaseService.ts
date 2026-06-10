@@ -115,9 +115,9 @@ export default class FirebaseService {
 
     /** 取排行榜（依勝場由多到少） */
     static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
+        console.log("leader");
         if (!this.isReady()) return Promise.resolve([]);
-        return firebase.firestore().collection("users")
-            .orderBy("wins", "desc").limit(limit).get()
+        return firebase.firestore().collection("users").get()
             .then((snap: any) => {
                 const out: LeaderRow[] = [];
                 snap.forEach((d: any) => {

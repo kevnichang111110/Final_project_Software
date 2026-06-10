@@ -19,22 +19,35 @@ export default class LeaderboardManager extends cc.Component {
     @property({ tooltip: "顯示前幾名" })
     topN: number = 20;
 
-    onLoad() {
+    onEnable() {
+        console.log("====== 排行榜面板被打開了！ ======");
         FirebaseService.init();
         this.refresh();
     }
 
     refresh() {
+        console.log("【追蹤 1】refresh() 開始執行");
+        console.log("【追蹤 2】Firebase 就緒狀態:", FirebaseService.isReady());
+        
         if (this.fallbackLabel) this.fallbackLabel.string = "載入中…";
+        
         FirebaseService.getLeaderboard(this.topN)
-            .then((rows) => this.render(rows))
+            .then((rows) => {
+                console.log("【追蹤 3】成功取得資料！資料筆數:", rows.length);
+                console.log("【追蹤 4】檢查編輯器綁定 -> Content 節點有嗎:", !!this.content, " / Prefab有嗎:", !!this.rowPrefab);
+                this.render(rows);
+            })
             .catch((e) => {
-                cc.error("[Leaderboard]", e);
+                console.error("【追蹤 3 錯誤】抓取排行榜失敗:", e);
                 if (this.fallbackLabel) this.fallbackLabel.string = "排行榜載入失敗";
             });
     }
+    onCloseButtonClick() {
+        this.node.active = false;
+    }
 
     private render(rows: LeaderRow[]) {
+        console.log("抓到的排行榜資料：", rows);
         if (this.rowPrefab && this.content) {
             this.content.removeAllChildren();
             rows.forEach((r, i) => {
