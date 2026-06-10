@@ -25,6 +25,7 @@ export default class AirPhysics {
     private comVel = cc.v2(0, 0);     // 質心線速度
     private omega = 0;                // 角速度（度/秒）
     private rot = 0;                  // 自進入空中以來累積旋轉（度）
+    private landCooldown = 0;         // 落地後沉澱倒數（秒）：>0 期間不准再接管，避免落地→彈一下→立刻又接管抓到尖刺速度
 
     // 進入空中時記下每個零件：相對質心位移、初始角度、原本的 body type（落地還原用）
     private parts = new Map<cc.Node, { ox: number; oy: number; angle0: number; type0: number }>();
@@ -82,8 +83,11 @@ export default class AirPhysics {
             return true;
         }
 
-        // 尚未接管：只有「真正騰空（沒著地、也沒貼牆）」才接管
-        if (grounded || onWall) return false;
+        // 尚未接管：落地冷卻倒數。冷卻期間先交給 Box2D 沉澱，不重新接管。
+        if (this.landCooldown > 0) this.landCooldown = Math.max(0, this.landCooldown - dt);
+
+        // 只有「真正騰空（沒著地、也沒貼牆）」且不在落地冷卻中才接管
+        if (grounded || onWall || this.landCooldown > 0) return false;
         this.enterAir();
         if (!this.active) return false;
         this.integrate(dt, moveDir);
@@ -134,6 +138,9 @@ export default class AirPhysics {
         const n = bodies.length;
         this.com = cc.v2(cx / n, cy / n);
         this.comVel = cc.v2(vx / n, vy / n);   // 保留進空中當下的動量
+        // 進空中初速夾制：擋住「落地瞬間被地板彈出的退化尖刺」被當成空中初速 → 不會誇張噴飛
+        const spd = this.comVel.mag();
+        if (spd > AIRPHYS.MAX_ENTER_SPEED) this.comVel.mulSelf(AIRPHYS.MAX_ENTER_SPEED / spd);
 
         const coreRb = core.getComponent(cc.RigidBody);
         this.omega = cc.misc.clampf(coreRb ? coreRb.angularVelocity : 0, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
@@ -237,5 +244,6 @@ export default class AirPhysics {
 
         this.parts.clear();
         this.active = false;
+        this.landCooldown = AIRPHYS.LAND_COOLDOWN;   // 落地後沉澱一小段，避免立刻又接管
     }
 }
