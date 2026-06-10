@@ -14,6 +14,7 @@ import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import WallRide from "./battle/WallRide";
 import StuckRescue from "./battle/StuckRescue";
+import { isWheelNode, isWeaponNode } from "./core/PartUtils";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
 import MapLoader from "./map/MapLoader";
@@ -496,10 +497,14 @@ export default class BattleManager extends cc.Component {
         const target = this.moveDir * AIRBOX.ROT_SPEED;
         this.airSpin += (target - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
 
+        // 只轉「車身底盤」（核心＋方塊，焊接成剛體）。排除輪子與武器：
+        //   - 輪子要在軸上自由旋轉，若被強制設角速度、貼地時會像打滑一樣把整車甩轉。
+        //   - 武器在旋轉關節上由滑鼠瞄準控制，強制設會打架。
         this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
             const nd = rb.node;
             if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
-            rb.angularVelocity = this.airSpin;   // 整車所有零件一致 → 受控、不被某些零件角動量帶跑
+            if (isWheelNode(nd) || isWeaponNode(nd)) return;
+            rb.angularVelocity = this.airSpin;   // 底盤各零件一致 → 受控、不被個別零件角動量帶跑
             rb.awake = true;
         });
     }
