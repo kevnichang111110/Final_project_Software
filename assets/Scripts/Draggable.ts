@@ -117,6 +117,7 @@ export default class Draggable extends cc.Component {
     // ---- 放置規則 ----
     // 武器、輪子必須鄰接一個 Body/Core 才能放；Body、Core 只要格子空著即可。
     private canPlaceAt(gx: number, gy: number): boolean {
+        if (gx < 0 || gx >= GRID.COUNT || gy < 0 || gy >= GRID.COUNT) return false;
         if (this.isGridOccupied(gx, gy)) return false;
         if (this.partType === PartType.Weapon || this.partType === PartType.Wheel) {
             if (!this.hasAdjacentBody(gx, gy)) return false;
@@ -133,6 +134,7 @@ export default class Draggable extends cc.Component {
         if (!this.partsLayer) return false;
         for (let p of this.partsLayer.children) {
             if (p === this.node) continue;
+            if (p.name === "placeHint") continue;   // 提示框不算零件，避免誤判格子被佔用
             const pgx = Math.floor(p.x / GRID.CELL_SIZE);
             const pgy = Math.floor(p.y / GRID.CELL_SIZE);
             if (pgx === gx && pgy === gy) {
@@ -149,7 +151,13 @@ export default class Draggable extends cc.Component {
     private ensureHint() {
         if (this.hintGfx && this.hintGfx.node && this.hintGfx.node.isValid) return;
         if (!this.partsLayer) return;
-        const n = new cc.Node("placeHint");
+        // 共用單一提示節點，避免每個零件實例各建一個而在 PartLayer 累積空節點
+        let n = this.partsLayer.getChildByName("placeHint");
+        if (n && n.isValid) {
+            this.hintGfx = n.getComponent(cc.Graphics) || n.addComponent(cc.Graphics);
+            return;
+        }
+        n = new cc.Node("placeHint");
         n.parent = this.partsLayer;
         n.setPosition(0, 0);
         n.zIndex = 50;
@@ -212,6 +220,7 @@ export default class Draggable extends cc.Component {
 
         for (let p of this.partsLayer.children) {
             if (p === this.node) continue;
+            if (p.name === "placeHint") continue;   // 提示框不算零件，避免誤判格子被佔用
             let pgx = Math.floor(p.x / GRID.CELL_SIZE);
             let pgy = Math.floor(p.y / GRID.CELL_SIZE);
             if (pgx === gx && pgy === gy) return true;
