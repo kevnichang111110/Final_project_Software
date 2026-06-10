@@ -61,10 +61,10 @@ export default class MapLoader extends cc.Component {
     wallThickness: number = 10;
     @property({ tooltip: "牆外淺灰色虛空往外延伸多遠（要夠大才能蓋滿畫面外側）" })
     voidExtend: number = 2000;
-    @property({ tooltip: "邊界牆顏色（深灰）" })
-    boundaryColor: cc.Color = cc.color(58, 60, 66);
-    @property({ tooltip: "牆外虛空顏色（灰）" })
-    voidColor: cc.Color = cc.color(165, 172, 181);
+    @property({ tooltip: "道路路面 / 邊界顏色（中灰）" })
+    boundaryColor: cc.Color = cc.color(120, 125, 132);
+    @property({ tooltip: "牆外虛空顏色（深灰）" })
+    voidColor: cc.Color = cc.color(50, 52, 58);
     @property({ tooltip: "視覺節點的 zIndex（越小越在底層，避免擋住車子）" })
     visualZIndex: number = -10;
 
@@ -77,6 +77,10 @@ export default class MapLoader extends cc.Component {
 
     private rng: () => number = Math.random;
     private current: cc.Node | null = null;   // 目前載入的地圖實例（連同視覺與物件都掛在它底下）
+    private boundaryPoints: cc.Vec2[] = [];    // 目前地圖邊界多邊形（≈世界座標），供外部（AirPhysics）取用
+
+    // 目前地圖的邊界多邊形點（≈世界座標）。沒有地圖時回傳空陣列。
+    public getBoundary(): cc.Vec2[] { return this.boundaryPoints; }
 
     start() {
         // BattleManager 若有綁定 mapLoader，會在 onLoad 階段先呼叫 loadRandomMap()；
@@ -107,12 +111,13 @@ export default class MapLoader extends cc.Component {
         map.setPosition(0, 0);
         this.current = map;
 
-        // 3) 找邊界、讀點（轉成 current 的本地座標）
+        // 3) 找邊界、讀點（轉成 current 的本地座標；map 在原點 → 約等於世界座標）
         const inner = this.readBoundaryPoints(map);
         if (!inner || inner.length < 3) {
             cc.warn(`[MapLoader] 地圖「${prefab.name}」找不到有效的邊界 PhysicsChainCollider`);
             return;
         }
+        this.boundaryPoints = inner;   // 供 AirPhysics 把車夾在場內用
 
         // 4) 視覺
         if (this.autoDrawVisuals) this.drawArena(inner, this.outwardNormals(inner));
@@ -279,7 +284,10 @@ export default class MapLoader extends cc.Component {
         }
     }
 
-    // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝一個大矩形挖掉內界多邊形的洞 ----
+    // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝內界往外放大成大環的實心帶 ----
+    // cc.Graphics 是「每個子路徑各自實心填」，不支援跨子路徑挖洞，自交的四邊形還會破洞。
+    // 因此虛空不用「大矩形挖洞」，改成「內界 → 把內界以質心放大 8 倍的外環」之間鋪實心帶：
+    // void 用 fillOutside（只填外側、內側留洞透出背景）；牆用薄帶蓋在最上。
     private drawArena(inner: cc.Vec2[], normals: cc.Vec2[]) {
         const n = inner.length;
         const outer: cc.Vec2[] = [];
@@ -287,33 +295,10 @@ export default class MapLoader extends cc.Component {
             const p = inner[i], nm = normals[i];
             outer.push(cc.v2(p.x + nm.x * this.wallThickness, p.y + nm.y * this.wallThickness));
         }
-        // 虛空：大矩形 + 內界當洞（even-odd），避免舊版「2000px 寬帶在凹角自交」造成的三角形破洞
-        this.fillVoidWithHole(inner, this.voidColor, "arenaVoid", this.visualZIndex - 1);
-        // 牆：內界→外界的薄帶（厚度小、不會自交）；畫在虛空之上蓋住內界~外界那圈
+        // 虛空：只填內界「外側」（內側留洞 → 透出背景圖）
+        this.fillOutside(inner, this.voidColor, 6000, "arenaVoid", this.visualZIndex - 1);
+        // 牆：內界→外界的薄帶，畫在虛空之上
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
-    }
-
-    // 一個遠大於畫面的矩形，挖掉 hole 多邊形 → 只填洞外（牆外虛空）。
-    // cc.Graphics 用 nonzero 環繞規則，外框與洞必須「相反方向」才會挖空：
-    // 外框畫逆時針(CCW)，洞統一轉成順時針(CW)。
-    private fillVoidWithHole(hole: cc.Vec2[], color: cc.Color, name: string, z: number) {
-        const node = new cc.Node(name);
-        node.parent = this.current!;
-        node.setPosition(0, 0);
-        node.zIndex = z;
-
-        const g = node.addComponent(cc.Graphics);
-        g.fillColor = color;
-
-        const R = this.voidExtend + 4000;   // 夠大以蓋滿畫面外側
-        // 外框：逆時針
-        g.moveTo(-R, -R); g.lineTo(R, -R); g.lineTo(R, R); g.lineTo(-R, R); g.close();
-        // 洞：轉成順時針（與外框相反）→ nonzero 下內部環繞數歸零 → 不填 = 挖空
-        const cw = this.signedArea(hole) > 0 ? hole.slice().reverse() : hole;
-        g.moveTo(cw[0].x, cw[0].y);
-        for (let i = 1; i < cw.length; i++) g.lineTo(cw[i].x, cw[i].y);
-        g.close();
-        g.fill();
     }
 
     // 多邊形有號面積（>0 為逆時針 CCW）
@@ -324,6 +309,51 @@ export default class MapLoader extends cc.Component {
             a += p.x * q.y - q.x * p.y;
         }
         return a * 0.5;
+    }
+
+    // 只填多邊形「外側」一圈寬 ext 的實心區（內側留洞）。
+    // cc.Graphics 每個子路徑各自 earcut 實心填、重疊同色 OR、不支援挖洞；
+    // 故用「每邊往外擠的矩形 + 每頂點的楔形三角形」鋪滿外側，每塊都凸、不自交 → 無破洞、不塞內側。
+    private fillOutside(inner: cc.Vec2[], color: cc.Color, ext: number, name: string, z: number) {
+        const node = new cc.Node(name);
+        node.parent = this.current!;
+        node.setPosition(0, 0);
+        node.zIndex = z;
+
+        const g = node.addComponent(cc.Graphics);
+        g.fillColor = color;
+
+        const n = inner.length;
+        const ccw = this.signedArea(inner) > 0;
+
+        // 一致朝外的每邊法線
+        const en: cc.Vec2[] = [];
+        for (let i = 0; i < n; i++) {
+            const a = inner[i], b = inner[(i + 1) % n];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const len = Math.hypot(dx, dy) || 1;
+            dx /= len; dy /= len;
+            en.push(ccw ? cc.v2(dy, -dx) : cc.v2(-dy, dx));
+        }
+
+        // 每邊往外擠成矩形
+        for (let i = 0; i < n; i++) {
+            const a = inner[i], b = inner[(i + 1) % n], N = en[i];
+            g.moveTo(a.x, a.y);
+            g.lineTo(b.x, b.y);
+            g.lineTo(b.x + N.x * ext, b.y + N.y * ext);
+            g.lineTo(a.x + N.x * ext, a.y + N.y * ext);
+            g.close();
+        }
+        // 每頂點補楔形三角形（蓋凸角縫；凹角重疊同色無害）
+        for (let i = 0; i < n; i++) {
+            const p = inner[i], Np = en[(i - 1 + n) % n], Nc = en[i];
+            g.moveTo(p.x, p.y);
+            g.lineTo(p.x + Np.x * ext, p.y + Np.y * ext);
+            g.lineTo(p.x + Nc.x * ext, p.y + Nc.y * ext);
+            g.close();
+        }
+        g.fill();
     }
 
     // 每個頂點朝外的單位法線。

@@ -49,7 +49,9 @@ export default class Health extends cc.Component {
     private invincibilityDuration: number = DAMAGE.INVINCIBILITY;
 
     // 血條狀態
-    private inBattle: boolean = false;
+    // 由 BattleManager 在開戰時設 true、結束時設 false（取代不可靠的 getScene().name === "game" 判斷）。
+    // 用靜態旗標，避免「場景名稱在 runtime 不是 'game'」造成血條永遠不顯示。
+    public static activeInBattle: boolean = false;
     private hpBarNode: cc.Node | null = null;
     private hpBarGraphics: cc.Graphics | null = null;
     private hitTimer: number = 0;
@@ -63,7 +65,7 @@ export default class Health extends cc.Component {
         if (rb) rb.enabledContactListener = true;
 
         // 只有在戰鬥場景才需要血條
-        this.inBattle = cc.director.getScene().name === "game";
+        // inBattle 改由 BattleManager 設定的 Health.activeInBattle 決定（見 update/forceShowBar/onBeginContact）
     }
 
     onDestroy() {
@@ -122,7 +124,7 @@ export default class Health extends cc.Component {
     }
 
     update(dt: number) {
-        if (!this.inBattle || !this.showDebugHPBar) return;
+        if (!Health.activeInBattle || !this.showDebugHPBar) return;
         if (!this.node || !this.node.isValid) return;
 
         // 懶建立：確保父層已就緒才建血條
@@ -187,7 +189,7 @@ export default class Health extends cc.Component {
     // 傷害判定（行為與原版一致）
     // ====================================================================
     onBeginContact(contact: cc.PhysicsContact, selfCollider: cc.PhysicsCollider, otherCollider: cc.PhysicsCollider) {
-        if (cc.director.getScene().name === "Shop") return;
+        if (!Health.activeInBattle) return;   // 非戰鬥（如商店）不判定傷害
         if (this.isInvincible || this.currentHP <= 0) return;
 
         const myGroup = this.node.group;
@@ -280,6 +282,8 @@ export default class Health extends cc.Component {
 
         // 受擊 → 讓血條明顯顯示一段時間
         this.hitTimer = this.hitShowDuration;
+        // 直接強制立刻顯示血條：takeDamage 由物理回呼觸發，即使 update 因故沒跑，受擊也一定看得到血條。
+        this.forceShowBar();
 
         this.isInvincible = true;
         this.scheduleOnce(() => {
@@ -297,6 +301,30 @@ export default class Health extends cc.Component {
         this.playSfx("die");
         this.currentHP = 0;
         if (this.onDieCallback) this.onDieCallback();
+    }
+
+    // 受擊當下立刻把血條建好、釘到零件上方並畫成明顯。不靠 update（即使 update 沒跑也看得到）。
+    private forceShowBar() {
+        if (!Health.activeInBattle || !this.showDebugHPBar) return;
+        if (!this.node || !this.node.isValid) return;
+        if (!this.hpBarNode) { this.createHPBar(); if (!this.hpBarNode) return; }
+        if (!this.hpBarNode.isValid) return;
+
+        const worldCenter = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
+        const parent = this.hpBarNode.parent;
+        if (parent) {
+            const local = parent.convertToNodeSpaceAR(cc.v2(worldCenter.x, worldCenter.y + this.debugBarOffsetY));
+            this.hpBarNode.setPosition(local);
+        }
+        this.hpBarNode.angle = 0;
+        this.hpBarNode.scaleX = 1;
+        this.hpBarNode.scaleY = 1;
+
+        this.curAlpha = 1;
+        const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
+        this.drawBar(ratio, 1);
+        this.lastAlpha = 1;
+        this.lastRatio = ratio;
     }
 
     // 優先用 PartAudio（第 8 點的通用音效介面），沒有才退回 Health 自己的舊欄位

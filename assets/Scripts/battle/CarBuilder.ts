@@ -4,7 +4,7 @@
 // 並把建立結果（核心血量、槍械、各種 joint）打包回傳，讓 BattleManager / BotAI 使用。
 
 import GameManager from "../GameManager";
-import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX } from "../core/GameConstants";
+import { GROUP, BATTLE, GRID, MOUSE_TURRET, HITFX, JOINT, PHYSICS } from "../core/GameConstants";
 import { PartType, WeaponMode } from "../core/PartType";
 import {
     isCoreNode, isBodyLikeNode, isWheelNode, isWeaponNode, getPrefabByName, getDraggable,
@@ -27,7 +27,8 @@ export interface BuiltCar {
     weaponJoints: cc.RevoluteJoint[];
     wheelMultipliers: Map<cc.WheelJoint, number>;
     wheelAbilities: any[];           // WheelAbility[]（噴射/彈跳）
-    mouseCannons: { node: cc.Node, joint: cc.RevoluteJoint }[];  // 滑鼠砲：節點 + 旋轉關節
+    // 滑鼠砲：節點 + 旋轉關節 + 建立當下「砲管世界角 − 母體世界角」（弧度中心，瞄準夾角用）
+    mouseCannons: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }[];
 }
 
 export interface BuildParams {
@@ -72,6 +73,8 @@ export default class CarBuilder {
                 startPos.y + data.gridY * GRID.CELL_SIZE
             );
             node.scaleX = sideMultiplier;  // Bot 水平翻轉
+
+            CarBuilder.inflateCollider(node);   // 碰撞體稍微外擴，讓車外緣接近實心、薄物件插不進凹口
 
             result.partsMap.set(`${data.gridX},${data.gridY}`, node);
 
@@ -128,6 +131,12 @@ export default class CarBuilder {
                 if (right && isBodyLikeNode(right)) JointFactory.weld(node, right);
                 const top = result.partsMap.get(`${x},${y + 1}`);
                 if (top && isBodyLikeNode(top)) JointFactory.weld(node, top);
+
+                // 隱形星狀框：每個非核心 body 額外焊一條到核心 → 整車剛性大增、零件不被甩飛。
+                // joint 掛在 node 上，零件死亡時會跟著銷毀。
+                if (JOINT.STAR_WELD_TO_CORE && result.coreNode && node !== result.coreNode) {
+                    JointFactory.weld(node, result.coreNode);
+                }
             }
 
             if (isWheelNode(node)) {
@@ -145,7 +154,13 @@ export default class CarBuilder {
                     const halfArc = mc && typeof mc.aimHalfArc === "number" ? mc.aimHalfArc : MOUSE_TURRET.HALF_ARC;
                     const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, halfArc, MOUSE_TURRET.TORQUE);
                     if (tj) {
-                        result.mouseCannons.push({ node, joint: tj });
+                        // 弧度中心：建立當下砲管世界角 − 母體(關節所在 body)世界角
+                        const c0 = node.convertToWorldSpaceAR(cc.v2(0, 0));
+                        const fp0 = node.getChildByName("firepoint");
+                        const m0 = fp0 ? fp0.convertToWorldSpaceAR(cc.v2(0, 0)) : node.convertToWorldSpaceAR(cc.v2(40, 0));
+                        const barrel0 = Math.atan2(m0.y - c0.y, m0.x - c0.x) * 180 / Math.PI;
+                        const mountOffset = barrel0 - (tj.node ? tj.node.angle : 0);
+                        result.mouseCannons.push({ node, joint: tj, mountOffset });
                         CarBuilder.addAimLine(node);
                     }
                 } else {
@@ -176,6 +191,23 @@ export default class CarBuilder {
         g.moveTo(dir.x * 12, dir.y * 12);
         g.lineTo(dir.x * 240, dir.y * 240);
         g.stroke();
+    }
+
+    // 把零件碰撞體稍微外擴，讓整車外緣接近連續實心、凹口變淺（薄碰撞體插不進輪子/方塊縫）。
+    private static inflateCollider(node: cc.Node) {
+        const inf = PHYSICS.COLLIDER_INFLATE;
+        if (inf <= 0) return;
+        const box = node.getComponent(cc.PhysicsBoxCollider);
+        if (box) {
+            box.size = cc.size(box.size.width + inf, box.size.height + inf);
+            box.apply();
+            return;
+        }
+        const circle = node.getComponent(cc.PhysicsCircleCollider);
+        if (circle) {
+            circle.radius += inf / 2;
+            circle.apply();
+        }
     }
 
     // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀

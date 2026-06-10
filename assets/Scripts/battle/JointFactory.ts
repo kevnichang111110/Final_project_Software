@@ -79,6 +79,7 @@ export default class JointFactory {
         else joint.localAxisA = cc.v2(0, 1);
 
         joint.frequency = JOINT.WHEEL_FREQUENCY;
+        (joint as any).dampingRatio = JOINT.WHEEL_DAMPING;   // 臨界阻尼，懸吊硬且不來回彈 → 輪子貼著車身不「拆開」
         joint.enableMotor = true;
 
         const drag = wheelNode.getComponent("Draggable") as any;
@@ -162,8 +163,12 @@ export default class JointFactory {
         joint.connectedBody = weaponRb;
         joint.anchor = parentBox.convertToNodeSpaceAR(worldPos);
         joint.connectedAnchor = weaponNode.convertToNodeSpaceAR(worldPos);
-        joint.enableLimit = false;     // 全 360 度自由瞄準（不限制角度 → 可朝任意方向、含向後）
-        joint.enableMotor = true;
+        // 角度上限：建立當下砲塔在 0 偏移，限制在 ±halfArc → 砲管/準星線硬體上不會超出弧度（備援）。
+        joint.enableLimit = true;
+        joint.lowerAngle = -halfArc;
+        joint.upperAngle = halfArc;
+        // 不用馬達瞄準（馬達會把反作用扭矩帶到車身讓整台車轉）。改由 BattleManager.aimTurret 直接設角速度。
+        joint.enableMotor = false;
         joint.maxMotorTorque = torque;
         return joint;
     }

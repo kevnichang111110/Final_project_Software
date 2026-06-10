@@ -27,6 +27,9 @@ export const PHYSICS = {
     VELOCITY_ITERATIONS: 40,
     POSITION_ITERATIONS: 40,
     FIXED_TIME_STEP: 1 / 60,
+    // 建車時把零件碰撞體外擴這麼多 px，讓車外緣接近連續實心、凹口變淺，
+    // 避免薄碰撞體（蹺蹺板長條、地圖邊界細線）插進輪子/方塊縫。方塊寬高各 +此值，輪子半徑 +此值/2。
+    COLLIDER_INFLATE: 6,
 };
 
 export const BATTLE = {
@@ -42,11 +45,14 @@ export const BATTLE = {
 };
 
 export const JOINT = {
-    WHEEL_FREQUENCY: 10,
+    WHEEL_FREQUENCY: 20,        // 懸吊彈簧頻率（Hz）。調高＝懸吊更硬、輪子相對車身位移更小（跳躍時不易看起來「拆開」）。
+                                // 注意 dt=1/60 下別超過 ~28Hz 以免不穩；搭配 JointFactory 的 dampingRatio=1 臨界阻尼不彈跳
+    WHEEL_DAMPING: 1.0,         // 懸吊阻尼比（1=臨界阻尼，不來回彈）
     WHEEL_MAX_TORQUE: 400000,
     WHEEL_TARGET_SPEED: -1500,  // 玩家輪子目標馬達速度（乘上 moveDir）。與 BOT.MOVE_SPEED 同量級，否則玩家明顯比 bot 慢
     WHEEL_SMOOTHING: 0.2,       // 輪速插值平滑（調高一點讓起步更跟手）
     WELD_FREQUENCY: 0,
+    STAR_WELD_TO_CORE: true,    // 每個 body 額外焊一條到核心（隱形星狀框），讓車體更硬、零件不被甩飛。出問題可關
     MELEE_MAX_TORQUE: 10000,
     MELEE_ATTACK_SPEED: 1500,   // 玩家近戰揮出
     MELEE_RETURN_SPEED: -500,   // 玩家近戰收回
@@ -82,13 +88,24 @@ export const DAMAGE = {
 
 // 空中左右旋轉（施加在核心剛體上的扭矩）
 export const AIR = {
-    // 空中旋轉：直接「控制角速度」而非施加扭矩。每幀把核心角速度以 SPIN_ACCEL 的步進開向目標：
-    // 按 A/D → 目標 ±SPIN_TARGET（度/秒）；沒按 → 目標 0（自然停轉）。
-    // 直接設角速度＋步進限制 → 絕不過衝、絕不發散，被彈飛打出的瘋狂自旋也會被穩定收回，完全可控。
-    SPIN_TARGET: 200,         // 按住 A/D 想達到的旋轉角速度（度/秒），越大轉越快
-    SPIN_ACCEL: 1100,         // 角速度每秒可變化量（度/秒²），越大反應越快（也越生硬）
-    GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地 → 空中旋轉更容易觸發）
-    CONTACT_PROBE: 10,        // 「完全無接觸才可翻滾」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
+    // 空中旋轉改由 AirPhysics 客製化積分器處理（見下方 AIRPHYS）。這裡只留接觸偵測用的探測距離。
+    GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地）
+    CONTACT_PROBE: 6,         // 「完全無接觸才進入空中模式」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中（→ 愈難進入空中接管）
+};
+
+// Debug：按 P 切換，畫出每個零件的碰撞邊界、接觸探測射線、質心，並用顏色標示空中物理是否接管。
+// 綠=AirPhysics 接管中（kinematic，零件不會飄）、紅=交給 Box2D（一般物理）。
+export const DEBUG = {
+    SHOW_BOUNDS: false,       // 初始是否開啟（遊戲中按 P 可切換）
+};
+
+// 客製化空中物理（AirPhysics，只套用在玩家車）：完全騰空時接管，整車當剛體繞質心轉。
+// 旋轉只由「離地當下的角速度」起始 + 阻尼 + 左右輸入；下落為自由落體。
+export const AIRPHYS = {
+    ROT_INPUT: 480,   // 按住 A/D 每秒對角速度增加的量（度/秒²）
+    MAX_SPIN: 480,    // 角速度上限（度/秒）。也夾住「離地初始旋轉」避免被彈飛打出超高速一直翻
+    SPIN_DAMP: 1.4,   // 角速度每秒衰減比例（越大越快停轉）。放手後越轉越慢、不會一直翻
+    GRAVITY_Y: -600,  // 空中下落重力（比世界 -960 緩）。調這個改空中掉落快慢：負越大掉越快
 };
 
 // 自動翻正：接觸地面/物體（非牆面）且車身傾斜時，施加修正扭矩讓車子回到直立。
