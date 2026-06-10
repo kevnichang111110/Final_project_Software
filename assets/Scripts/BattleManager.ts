@@ -501,20 +501,29 @@ export default class BattleManager extends cc.Component {
         if (justEntered) this.airSpin = 0;
         else this.airSpin += (this.moveDir * AIRBOX.ROT_SPEED - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
 
-        // 只轉「車身底盤」（核心＋方塊，焊接成剛體）。排除輪子與武器：
-        //   - 輪子要在軸上自由旋轉，若被強制設角速度、貼地時會像打滑一樣把整車甩轉。
-        //   - 武器在旋轉關節上由滑鼠瞄準控制，強制設會打架。
         this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
             const nd = rb.node;
             if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
-            if (isWheelNode(nd) || isWeaponNode(nd)) return;
-            rb.angularVelocity = this.airSpin;   // 底盤各零件一致 → 受控、不被個別零件角動量帶跑
+            if (isWeaponNode(nd)) return;              // 武器交給滑鼠瞄準，不強制
+            if (isWheelNode(nd)) {                     // 空中輪子強制 0 → 不高速亂轉、不對車身產生反作用
+                rb.angularVelocity = 0;
+                rb.awake = true;
+                return;
+            }
+            rb.angularVelocity = this.airSpin;         // 車身底盤（核心＋方塊）一致 → 受控、不被個別零件角動量帶跑
             rb.awake = true;
         });
     }
 
     private updatePlayerMovement() {
         if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return;
+
+        // 空中不驅動輪子：馬達若繼續加速空轉的輪子，反作用扭矩會灌進車身、輪子也會高速亂轉。
+        if (this.airborne) {
+            this.wheelSpeed = 0;
+            for (const j of this.playerCar.wheelJoints) j.motorSpeed = 0;
+            return;
+        }
 
         const targetSpeed = this.moveDir * JOINT.WHEEL_TARGET_SPEED;
         this.wheelSpeed += (targetSpeed - this.wheelSpeed) * JOINT.WHEEL_SMOOTHING;
