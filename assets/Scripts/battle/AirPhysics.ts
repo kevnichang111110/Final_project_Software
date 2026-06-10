@@ -2,11 +2,12 @@
 // 玩家車「完全騰空」時接管的客製化剛體積分器（取代 Box2D 的空中行為）。
 // 規則：
 //   - 整車當一個剛體，質心 = 各活零件世界座標平均（每個權重 1），繞質心旋轉。
-//   - 旋轉只由「剛離地當下的角速度」起始；有阻尼會越轉越慢；按住 A/D 持續加正/負角速度。
+//   - 旋轉只由「剛離地當下的角速度」起始（會夾在上限內）；有阻尼會越轉越慢；按住 A/D 持續加正/負角速度。
 //   - 下落為自由落體（質心只受重力，水平速度維持離地當下的值）。
-//   - 落地（任一零件接觸到東西）時交回 Box2D；積分中已逐幀把剛體速度場灌回各零件，銜接平順。
+//   - 落地（任一零件接觸到東西）時把剛體速度場灌回各零件、交回 Box2D，銜接平順。
 //
-// 擺放手法沿用 StuckRescue.relocate：設 node transform 後呼叫 syncPosition/syncRotation 推進 Box2D。
+// 重點：接管期間把零件剛體切成 Kinematic，Box2D 就不會對它們施重力/關節力/碰撞反作用，
+//       完全由本積分器逐幀擺放（不會被物理拉扯而散架、抽搐）。落地時再切回 Dynamic。
 // 由 BattleManager 每幀呼叫 update(dt, moveDir, touching)，回傳是否正在接管（active）。
 
 import { PHYSICS, AIRPHYS } from "../core/GameConstants";
@@ -25,8 +26,8 @@ export default class AirPhysics {
     private omega = 0;                // 角速度（度/秒）
     private rot = 0;                  // 自進入空中以來累積旋轉（度）
 
-    // 進入空中時記下每個零件相對質心的初始位移與初始角度
-    private offsets = new Map<cc.Node, { ox: number; oy: number; angle0: number }>();
+    // 進入空中時記下每個零件：相對質心位移、初始角度、原本的 body type（落地還原用）
+    private parts = new Map<cc.Node, { ox: number; oy: number; angle0: number; type0: number }>();
 
     constructor(car: BuiltCar, root: cc.Node, partGroup: string) {
         this.root = root;
@@ -39,14 +40,14 @@ export default class AirPhysics {
     // 回傳是否正在接管空中物理
     update(dt: number, moveDir: number, touching: boolean): boolean {
         const core = this.coreNode;
-        if (!core || !core.isValid) { this.active = false; return false; }
+        if (!core || !core.isValid) { if (this.active) this.exitAir(); return false; }
 
-        if (touching) {                 // 有接觸 → 交給 Box2D
-            this.active = false;
+        if (touching) {                 // 有接觸 → 交回 Box2D
+            if (this.active) this.exitAir();
             return false;
         }
 
-        if (!this.active) this.enterAir();   // 剛離地：擷取初始狀態
+        if (!this.active) this.enterAir();   // 剛離地：擷取初始狀態、切 Kinematic
         if (!this.active) return false;       // 沒有活零件等 → 放棄接管
 
         this.integrate(dt, moveDir);
@@ -81,16 +82,20 @@ export default class AirPhysics {
         this.com = cc.v2(cx / n, cy / n);
         this.comVel = cc.v2(vx / n, vy / n);
 
-        // 初始旋轉量 = 核心當下角速度（度/秒）
+        // 初始旋轉量 = 核心當下角速度（度/秒），夾在上限內避免被彈飛打出超高速一直翻
         const coreRb = this.coreNode!.getComponent(cc.RigidBody);
-        this.omega = coreRb ? coreRb.angularVelocity : 0;
+        this.omega = cc.misc.clampf(coreRb ? coreRb.angularVelocity : 0, -AIRPHYS.MAX_SPIN, AIRPHYS.MAX_SPIN);
         this.rot = 0;
 
-        // 記下每個零件相對質心的位移與初始角度
-        this.offsets.clear();
+        // 記下各零件資訊並切成 Kinematic（Box2D 不再施力，純由本積分器擺放）
+        this.parts.clear();
         for (let i = 0; i < bodies.length; i++) {
-            const nd = bodies[i].node;
-            this.offsets.set(nd, { ox: worlds[i].x - this.com.x, oy: worlds[i].y - this.com.y, angle0: nd.angle });
+            const rb = bodies[i];
+            const nd = rb.node;
+            this.parts.set(nd, { ox: worlds[i].x - this.com.x, oy: worlds[i].y - this.com.y, angle0: nd.angle, type0: rb.type });
+            rb.type = cc.RigidBodyType.Kinematic;
+            rb.linearVelocity = cc.v2(0, 0);
+            rb.angularVelocity = 0;
         }
 
         this.active = true;
@@ -108,33 +113,50 @@ export default class AirPhysics {
         this.com.x += this.comVel.x * dt;
         this.com.y += this.comVel.y * dt;
 
-        // 剛體擺放：整車繞質心旋轉 rot 度
+        // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
         const rad = this.rot * DEG2RAD;
         const cos = Math.cos(rad), sin = Math.sin(rad);
-        const omegaRad = this.omega * DEG2RAD;
 
         for (const rb of this.livingBodies()) {
             const nd = rb.node;
-            const off = this.offsets.get(nd);
-            if (!off) continue;   // 中途新增（理論上不會）或無紀錄者跳過
+            const p = this.parts.get(nd);
+            if (!p) continue;
 
-            // 旋轉後的相對位移
-            const rx = off.ox * cos - off.oy * sin;
-            const ry = off.ox * sin + off.oy * cos;
+            const rx = p.ox * cos - p.oy * sin;
+            const ry = p.ox * sin + p.oy * cos;
             const world = cc.v2(this.com.x + rx, this.com.y + ry);
 
             const parent = nd.parent || this.root;
             nd.setPosition(parent.convertToNodeSpaceAR(world));
-            nd.angle = off.angle0 + this.rot;
-
-            // 剛體速度場：v = comVel + ω × r（2D：ω*(-ry, rx)）→ 落地當幀速度已正確、銜接平順
-            rb.linearVelocity = cc.v2(this.comVel.x - omegaRad * ry, this.comVel.y + omegaRad * rx);
-            rb.angularVelocity = this.omega;
+            nd.angle = p.angle0 + this.rot;
 
             const anyRb = rb as any;
             if (anyRb.syncPosition) anyRb.syncPosition(false);
             if (anyRb.syncRotation) anyRb.syncRotation(false);
-            rb.awake = true;
         }
+    }
+
+    // 交回 Box2D：把零件切回原本 type，並灌入「剛體速度場」v = comVel + ω × r，落地銜接平順
+    private exitAir() {
+        const rad = this.rot * DEG2RAD;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const omegaRad = this.omega * DEG2RAD;
+
+        this.parts.forEach((p, nd) => {
+            if (!nd || !nd.isValid) return;
+            const rb = nd.getComponent(cc.RigidBody);
+            if (!rb) return;
+
+            const rx = p.ox * cos - p.oy * sin;
+            const ry = p.ox * sin + p.oy * cos;
+
+            rb.type = p.type0;
+            rb.linearVelocity = cc.v2(this.comVel.x - omegaRad * ry, this.comVel.y + omegaRad * rx);
+            rb.angularVelocity = this.omega;
+            rb.awake = true;
+        });
+
+        this.parts.clear();
+        this.active = false;
     }
 }
