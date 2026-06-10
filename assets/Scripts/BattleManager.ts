@@ -89,6 +89,7 @@ export default class BattleManager extends cc.Component {
     private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
     private airborne = false;            // 騰空狀態（含遲滯）：決定是否套用 A/D 空中旋轉
     private airSpin = 0;                 // 空中旋轉指令角速度（度/秒），漸進到 moveDir×ROT_SPEED；落地歸零
+    private wasAirborne = false;         // 上一幀是否騰空（偵測「剛進空中」那一刻，先把角速度歸零）
 
     // Debug 視覺（按 P 切換）
     private debugOn = DEBUG.SHOW_BOUNDS;
@@ -491,11 +492,14 @@ export default class BattleManager extends cc.Component {
     //   目標 = moveDir×ROT_SPEED（A/←=+1、D/→=-1、放開=0）。直接設角速度 → 不累積、ROT_SPEED 即上限。
     //   每幀覆寫整車角速度也壓掉輪子反作用；放開漸進回 0 → 不會無輸入亂轉。
     private updateAirControl(airborne: boolean) {
-        if (!airborne) { this.airSpin = 0; return; }   // 落地重置，下次起跳從 0 開始
+        if (!airborne) { this.airSpin = 0; this.wasAirborne = false; return; }   // 落地重置
         if (!this.playerRoot || !this.playerRoot.isValid) return;
 
-        const target = this.moveDir * AIRBOX.ROT_SPEED;
-        this.airSpin += (target - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
+        // 剛進空中那一刻：指令角速度歸零，這一幀把底盤角速度設成 0（不帶入地面/碰撞殘留的旋轉）。
+        const justEntered = !this.wasAirborne;
+        this.wasAirborne = true;
+        if (justEntered) this.airSpin = 0;
+        else this.airSpin += (this.moveDir * AIRBOX.ROT_SPEED - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
 
         // 只轉「車身底盤」（核心＋方塊，焊接成剛體）。排除輪子與武器：
         //   - 輪子要在軸上自由旋轉，若被強制設角速度、貼地時會像打滑一樣把整車甩轉。
