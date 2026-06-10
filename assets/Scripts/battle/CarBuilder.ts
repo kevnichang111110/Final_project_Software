@@ -89,6 +89,16 @@ export default class CarBuilder {
             const isGun = !!drag && drag.partType === PartType.Weapon && drag.weaponMode === WeaponMode.Gun;
             const wantTurret = hasMouseCannon || (side === "PLAYER" && isGun);
 
+            // 槍 / 砲塔（遠程武器）改成 sensor：只偵測傷害、不產生物理碰撞，
+            // 讓槍管穿過敵車與地形、不把車推歪或卡住，砲塔瞄準也完全不受碰撞干擾。
+            // 近戰武器維持實體碰撞（揮砍靠相對速度判傷）。
+            if (isGun) {
+                (node.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[]).forEach(c => {
+                    c.sensor = true;
+                    if ((c as any).apply) (c as any).apply();
+                });
+            }
+
             if (drag && drag.partType === PartType.Weapon) {
                 cc.log(`[CarBuilder] ${side} 武器「${node.name}」 weaponMode=${drag.weaponMode} (0=Melee,1=Gun) MouseCannon=${hasMouseCannon} 砲塔=${wantTurret}`);
             }
