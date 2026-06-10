@@ -336,7 +336,6 @@ export default class BattleManager extends cc.Component {
         }
 
         this.updatePlayerGun(dt);
-        this.updateMouseCannons(dt);
 
         if (this.botAI && this.playerRoot && this.botRoot && this.weapons) {
             this.botAI.update(dt, this.playerRoot, this.botRoot, this.weapons);
@@ -357,6 +356,9 @@ export default class BattleManager extends cc.Component {
             this.updateAutoRight(grounded);         // 著地且傾斜 → 自動翻正
             this.updateJet();                       // 空中為純自由落體，不施噴射推力
         }
+        // 砲塔瞄準必須在空中物理之後跑：AirPhysics 會每幀把零件擺回標準角度，
+        // 在它之後才設砲管角度，地面與空中才都能正常面向游標。
+        this.updateMouseCannons(dt);
         this.updatePlayerMelee(dt);
         this.updateDebugDraw();
     }
@@ -410,7 +412,7 @@ export default class BattleManager extends cc.Component {
 
         // 1) 旋轉瞄準（每幀，無論是否開火）
         for (const c of cannons) {
-            if (c.node && c.node.isValid) this.aimTurret(c);
+            if (c.node && c.node.isValid) this.aimTurret(c, dt);
         }
 
         // 2) 開火
@@ -432,9 +434,9 @@ export default class BattleManager extends cc.Component {
         this.mouseCannonCooldown = interval;
     }
 
-    // 讓砲管轉向游標：直接設武器剛體角速度（不用馬達 → 不會把反作用扭矩帶到車身），
+    // 讓砲管轉向游標：直接設武器節點角度（而非角速度）→ 對睡眠/sensor 剛體與空中 Kinematic 都可靠。
     // 目標角先夾在 ±HALF_ARC（相對母體朝向）→ 砲管/準星線不會超出弧度、也不會去頂硬體上限。
-    private aimTurret(c: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }) {
+    private aimTurret(c: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }, dt: number) {
         const weaponNode = c.node, joint = c.joint;
         if (!joint || !joint.isValid) return;
         const weaponRb = weaponNode.getComponent(cc.RigidBody);
@@ -461,7 +463,14 @@ export default class BattleManager extends cc.Component {
 
         let err = target - cur;
         while (err > 180) err -= 360; while (err < -180) err += 360;
-        weaponRb.angularVelocity = cc.misc.clampf(err * MOUSE_TURRET.AIM_GAIN, -MOUSE_TURRET.AIM_SPEED, MOUSE_TURRET.AIM_SPEED);
+
+        // 直接設角度，每幀轉動量以 AIM_SPEED（度/秒）設上限（轉速感跟原本一致），
+        // 再把角速度歸零避免物理殘留漂移，最後把節點 transform 推進物理世界。
+        const maxStep = MOUSE_TURRET.AIM_SPEED * dt;
+        weaponNode.angle += cc.misc.clampf(err, -maxStep, maxStep);
+        weaponRb.angularVelocity = 0;
+        const anyRb = weaponRb as any;
+        if (anyRb.syncRotation) anyRb.syncRotation(false);
     }
 
     private updateMatchTimer(dt: number) {
