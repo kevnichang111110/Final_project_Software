@@ -65,6 +65,8 @@ export default class MapLoader extends cc.Component {
     boundaryColor: cc.Color = cc.color(120, 125, 132);
     @property({ tooltip: "牆外虛空顏色（深灰）" })
     voidColor: cc.Color = cc.color(50, 52, 58);
+    @property({ type: cc.SpriteFrame, tooltip: "牆外虛空的石頭貼圖（留空＝維持原本 voidColor 純色填充）" })
+    voidTexture: cc.SpriteFrame | null = null;
     @property({ tooltip: "視覺節點的 zIndex（越小越在底層，避免擋住車子）" })
     visualZIndex: number = -10;
 
@@ -296,7 +298,9 @@ export default class MapLoader extends cc.Component {
             outer.push(cc.v2(p.x + nm.x * this.wallThickness, p.y + nm.y * this.wallThickness));
         }
         // 虛空：只填內界「外側」（內側留洞 → 透出背景圖）
-        this.fillOutside(inner, this.voidColor, 6000, "arenaVoid", this.visualZIndex - 1);
+        // 有指定石頭貼圖就鋪石頭，否則維持原本的純色填充（行為與之前完全一致）
+        if (this.voidTexture) this.fillOutsideTextured(inner, "arenaVoid", this.visualZIndex - 1);
+        else this.fillOutside(inner, this.voidColor, 6000, "arenaVoid", this.visualZIndex - 1);
         // 牆：內界→外界的薄帶，畫在虛空之上
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
     }
@@ -354,6 +358,56 @@ export default class MapLoader extends cc.Component {
             g.close();
         }
         g.fill();
+    }
+
+    // 牆外虛空改鋪「石頭貼圖」版本：
+    // 用反向遮罩（inverted GRAPHICS_STENCIL）把內界多邊形當模板 → 只在「內界外側」顯示，
+    // 再放一張平鋪（TILED）的石頭 Sprite 當被遮罩內容，蓋滿整個外圍區域。
+    // cc.Graphics 無法填貼圖，故走「遮罩 + Sprite」而非純色 fill。
+    private fillOutsideTextured(inner: cc.Vec2[], name: string, z: number) {
+        const node = new cc.Node(name);
+        node.parent = this.current!;
+        node.setPosition(0, 0);
+        node.zIndex = z;
+
+        // 反向遮罩：模板＝內界多邊形，inverted → 內側挖空、只露外側
+        const mask = node.addComponent(cc.Mask);
+        // GRAPHICS_STENCIL 在 2.4.8 runtime 存在，但專案內建的 creator.d.ts 型別缺這個 enum，故轉型存取
+        mask.type = (cc.Mask.Type as any).GRAPHICS_STENCIL;
+        mask.inverted = true;
+        const g = (mask as any)._graphics as cc.Graphics;   // 2.4.x：GRAPHICS_STENCIL 以內部 graphics 繪製模板
+        if (g) {
+            g.clear();
+            for (let i = 0; i < inner.length; i++) {
+                const p = inner[i];
+                if (i === 0) g.moveTo(p.x, p.y);
+                else g.lineTo(p.x, p.y);
+            }
+            g.close();
+            g.fill();
+        }
+
+        // 內界包圍盒 → 中心與尺寸；往外加大 margin 蓋滿畫面外側（沿用原本 6000 的覆蓋範圍）
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of inner) {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        }
+        const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5;
+        const margin = 6000;
+        const side = Math.max(maxX - minX, maxY - minY) + margin * 2;
+
+        // 平鋪石頭 Sprite（被遮罩裁切，只會出現在外側）
+        const stone = new cc.Node("stone");
+        stone.parent = node;
+        stone.setPosition(cx, cy);
+        const sp = stone.addComponent(cc.Sprite);
+        sp.spriteFrame = this.voidTexture!;
+        sp.type = cc.Sprite.Type.TILED;
+        sp.sizeMode = cc.Sprite.SizeMode.CUSTOM;
+        stone.setContentSize(side, side);
     }
 
     // 每個頂點朝外的單位法線。
