@@ -86,7 +86,8 @@ export default class BattleManager extends cc.Component {
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
     private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
-    private airborne = false;            // 騰空狀態（含遲滯）：決定是否套用空中重力縮放與 A/D 旋轉扭矩
+    private airborne = false;            // 騰空狀態（含遲滯）：決定是否套用 A/D 空中旋轉
+    private airSpin = 0;                 // 空中旋轉指令角速度（度/秒），漸進到 moveDir×ROT_SPEED；落地歸零
 
     // Debug 視覺（按 P 切換）
     private debugOn = DEBUG.SHOW_BOUNDS;
@@ -484,17 +485,23 @@ export default class BattleManager extends cc.Component {
         if (this.matchTimer <= 0) this.startSuddenDeath();
     }
 
-    // 空中按鍵旋轉（玩家唯一的空中特化；引擎參數與機器人完全一致，無重力縮放、無扭矩控制器）。
-    // 直接「設定」核心角速度，不施扭矩 → 不會累積、不可能愈轉愈快。
-    // 焊接（freq 0）把整車當剛體跟著核心轉；放開（moveDir=0）→ 角速度設 0 → 立即停，並壓掉輪子反作用造成的自轉。
+    // 空中按鍵旋轉（HCR 式）：把指令角速度漸進到目標，並「設定」到整車每個零件——不只核心，
+    // 否則其餘焊接零件的角動量會把核心拖回去 → 整車照樣轉、不受 A/D 控制。
+    //   目標 = moveDir×ROT_SPEED（A/←=+1、D/→=-1、放開=0）。直接設角速度 → 不累積、ROT_SPEED 即上限。
+    //   每幀覆寫整車角速度也壓掉輪子反作用；放開漸進回 0 → 不會無輸入亂轉。
     private updateAirControl(airborne: boolean) {
-        if (!airborne || !this.playerCar) return;
-        const core = this.playerCar.coreNode;
-        const coreRb = core ? core.getComponent(cc.RigidBody) : null;
-        if (!coreRb) return;
-        // moveDir：A/← = +1、D/→ = -1、放開 = 0。單位：度/秒。
-        coreRb.angularVelocity = this.moveDir * AIRBOX.ROT_SPEED;
-        coreRb.awake = true;
+        if (!airborne) { this.airSpin = 0; return; }   // 落地重置，下次起跳從 0 開始
+        if (!this.playerRoot || !this.playerRoot.isValid) return;
+
+        const target = this.moveDir * AIRBOX.ROT_SPEED;
+        this.airSpin += (target - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
+
+        this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+            const nd = rb.node;
+            if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
+            rb.angularVelocity = this.airSpin;   // 整車所有零件一致 → 受控、不被某些零件角動量帶跑
+            rb.awake = true;
+        });
     }
 
     private updatePlayerMovement() {
