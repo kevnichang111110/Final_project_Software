@@ -36,6 +36,7 @@ export default class AirPhysics {
     }
 
     isActive(): boolean { return this.active; }
+    getCoM(): cc.Vec2 { return cc.v2(this.com.x, this.com.y); }
 
     // 回傳是否正在接管空中物理
     update(dt: number, moveDir: number, touching: boolean): boolean {
@@ -98,6 +99,7 @@ export default class AirPhysics {
         }
 
         this.active = true;
+        cc.log(`[AirPhysics] ENTER air (parts=${bodies.length}, omega=${this.omega.toFixed(0)})`);
     }
 
     // 回傳 true=已提交本幀擺放；false=偵測到要撞牆，已 exitAir 交回 Box2D
@@ -181,5 +183,6 @@ export default class AirPhysics {
 
         this.parts.clear();
         this.active = false;
+        cc.log("[AirPhysics] EXIT air → Box2D");
     }
 }

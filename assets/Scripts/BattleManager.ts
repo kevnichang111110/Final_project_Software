@@ -8,7 +8,7 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT, DEBUG } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
@@ -87,6 +87,11 @@ export default class BattleManager extends cc.Component {
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
     private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
+
+    // Debug 視覺（按 P 切換）
+    private debugOn = DEBUG.SHOW_BOUNDS;
+    private debugNode: cc.Node | null = null;
+    private debugGfx: cc.Graphics | null = null;
 
     // 記分板
     private playerScoreLabel: cc.Label | null = null;
@@ -335,15 +340,20 @@ export default class BattleManager extends cc.Component {
         this.updateMatchTimer(dt);
         this.updatePlayerMovement();
         this.updateStuckRescue(dt);
-        const touching = this.isTouchingAnything();   // 每幀算一次，空中物理/爬牆/翻正共用
-        // 完全騰空 → 客製化空中物理接管（繞質心旋轉 + 自由落體）；接管時其餘地面邏輯讓位
-        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, touching) : false;
-        if (!inAir) {
-            if (this.wallRide) this.wallRide.update(dt);
-            this.updateAutoRight(touching);         // 接觸地面且傾斜 → 自動翻正
+
+        // 先跑爬牆（只在貼到陡面時施力，空中不動作），用它判斷是否在牆上。
+        if (this.wallRide) this.wallRide.update(dt);
+        const onWall = !!(this.wallRide && this.wallRide.isEngaged());
+        const grounded = this.isGrounded();
+        // 真正騰空（沒著地、也沒貼牆）→ 客製化空中物理接管（繞質心旋轉 + 自由落體）。
+        // 注意：用「著地/貼牆」判斷，而非「附近有沒有東西」，否則在牆邊飛行時會一直被當成接觸 → 不接管 → 交給 Box2D 亂轉。
+        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, onWall || grounded) : false;
+        if (!inAir && !onWall) {
+            this.updateAutoRight(grounded);         // 著地且傾斜 → 自動翻正
             this.updateJet();                       // 空中為純自由落體，不施噴射推力
         }
         this.updatePlayerMelee(dt);
+        this.updateDebugDraw();
     }
 
     private updateCountdown(dt: number) {
@@ -502,30 +512,100 @@ export default class BattleManager extends cc.Component {
         (rb as any).applyTorque(torque, true);
     }
 
-    // 接觸偵測：從車上「每個還活著的零件」往「下、上、左、右」四向打短射線，
-    // 命中任何「非玩家自身零件」的 collider（地板/邊界/敵車/障礙物…）就視為接觸中。
-    // 完全沒命中 → 真正騰空 → 才允許空中翻滾。（只探核心/輪子會漏掉車體接觸，導致在地上仍被當成騰空亂轉。）
-    private isTouchingAnything(): boolean {
+    // 著地偵測：從車上「每個還活著的零件」往正下方打短射線，命中地板/邊界就算著地。
+    // 只看「下方」而非四周，所以在牆邊空中飛行時不會被誤判成接觸 → 空中物理能正常接管。
+    private isGrounded(): boolean {
         if (!this.playerRoot || !this.playerRoot.isValid) return false;
         const pm = cc.director.getPhysicsManager();
-        const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
-
         const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
         for (const rb of bodies) {
             const node = rb.node;
             if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
 
             const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
-            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.CONTACT_PROBE;
-            for (const d of dirs) {
-                const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x + d.x * len, o.y + d.y * len), cc.RayCastType.All);
-                for (const r of results) {
-                    const g = r.collider.node.group;
-                    if (g !== GROUP.PLAYER_PART && g !== GROUP.PLAYER_BULLET) return true;
-                }
+            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
+            const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - len), cc.RayCastType.All);
+            for (const r of results) {
+                const g = r.collider.node.group;
+                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
             }
         }
         return false;
+    }
+
+    // ====================================================================
+    // Debug 視覺（按 P 切換）：畫每個零件的碰撞邊界、接觸探測射線、質心。
+    // 零件外框：綠=AirPhysics 接管中（kinematic，零件不會飄）、紅=交給 Box2D。
+    // 探測射線：橘=有命中（被視為「接觸中」→ 無法進入空中接管）、藍=沒命中。
+    // 黃色十字=空中物理算出的質心。用來確認「空中翻滾到底是不是自己的物理在跑」。
+    // ====================================================================
+    private updateDebugDraw() {
+        if (!this.debugOn) { if (this.debugGfx) this.debugGfx.clear(); return; }
+        if (!this.debugGfx) {
+            const canvas = cc.find("Canvas");
+            if (!canvas) return;
+            this.debugNode = new cc.Node("DebugDraw");
+            this.debugNode.parent = canvas;
+            this.debugNode.setPosition(0, 0);
+            this.debugNode.zIndex = cc.macro.MAX_ZINDEX - 1;
+            this.debugGfx = this.debugNode.addComponent(cc.Graphics);
+        }
+        const g = this.debugGfx;
+        g.clear();
+        if (!this.playerRoot || !this.playerRoot.isValid) return;
+
+        const toLocal = (w: cc.Vec2) => this.debugNode!.parent!.convertToNodeSpaceAR(w);
+        const active = !!(this.airPhysics && this.airPhysics.isActive());
+        const partCol = active ? cc.color(60, 220, 90) : cc.color(230, 70, 70);
+        const pm = cc.director.getPhysicsManager();
+        const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
+
+        this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+            const nd = rb.node;
+            if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
+
+            // 碰撞邊界外框
+            g.lineWidth = 2; g.strokeColor = partCol;
+            const box = nd.getComponent(cc.PhysicsBoxCollider);
+            const circle = nd.getComponent(cc.PhysicsCircleCollider);
+            if (box) {
+                const hw = box.size.width / 2, hh = box.size.height / 2, ox = box.offset.x, oy = box.offset.y;
+                const corners = [cc.v2(-hw + ox, -hh + oy), cc.v2(hw + ox, -hh + oy), cc.v2(hw + ox, hh + oy), cc.v2(-hw + ox, hh + oy)];
+                const w = corners.map(c => toLocal(nd.convertToWorldSpaceAR(c)));
+                g.moveTo(w[0].x, w[0].y);
+                for (let i = 1; i < 4; i++) g.lineTo(w[i].x, w[i].y);
+                g.close(); g.stroke();
+            } else if (circle) {
+                const c = toLocal(nd.convertToWorldSpaceAR(cc.v2(circle.offset.x, circle.offset.y)));
+                g.circle(c.x, c.y, circle.radius); g.stroke();
+            }
+
+            // 接觸探測射線
+            const o = nd.convertToWorldSpaceAR(cc.v2(0, 0));
+            const len = Math.max(nd.width, nd.height, 40) * 0.5 + AIR.CONTACT_PROBE;
+            for (const d of dirs) {
+                const end = cc.v2(o.x + d.x * len, o.y + d.y * len);
+                const hits = pm.rayCast(o, end, cc.RayCastType.All);
+                let hit = false;
+                for (const h of hits) {
+                    const gg = h.collider.node.group;
+                    if (gg !== GROUP.PLAYER_PART && gg !== GROUP.PLAYER_BULLET) { hit = true; break; }
+                }
+                g.lineWidth = 1; g.strokeColor = hit ? cc.color(255, 170, 0) : cc.color(120, 120, 255);
+                const a = toLocal(o), b = toLocal(end);
+                g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+            }
+        });
+
+        // 質心
+        if (active && this.airPhysics) {
+            const cm = toLocal(this.airPhysics.getCoM());
+            g.lineWidth = 2; g.strokeColor = cc.color(255, 240, 0);
+            g.moveTo(cm.x - 12, cm.y); g.lineTo(cm.x + 12, cm.y);
+            g.moveTo(cm.x, cm.y - 12); g.lineTo(cm.x, cm.y + 12);
+            g.stroke();
+            g.circle(cm.x, cm.y, 14); g.stroke();
+        }
     }
 
     // 卡住自救：玩家「有按移動鍵卻沒前進」/ Bot 卡住 一段時間後，瞬移到最近可站處
@@ -737,6 +817,10 @@ export default class BattleManager extends cc.Component {
             case cc.macro.KEY.w:
             case cc.macro.KEY.up:
                 this.isBoosting = true;   // 噴射 boost
+                break;
+            case cc.macro.KEY.p:
+                this.debugOn = !this.debugOn;   // 切換 debug 邊界視覺
+                cc.log(`[Debug] bounds ${this.debugOn ? "ON" : "OFF"}`);
                 break;
             // S / 下：不再做爆發式脫離。下牆改用「反向輸入減速」（按與爬升相反的 A/D）。
         }

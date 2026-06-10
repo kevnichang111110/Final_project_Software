@@ -85,7 +85,13 @@ export const DAMAGE = {
 export const AIR = {
     // 空中旋轉改由 AirPhysics 客製化積分器處理（見下方 AIRPHYS）。這裡只留接觸偵測用的探測距離。
     GROUNDED_PROBE: 6,        // 著地探測長度（縮短 → 只有幾乎貼地才算著地）
-    CONTACT_PROBE: 10,        // 「完全無接觸才進入空中模式」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中
+    CONTACT_PROBE: 6,         // 「完全無接觸才進入空中模式」的多方向接觸偵測邊距（px）。愈大愈容易判定為接觸中（→ 愈難進入空中接管）
+};
+
+// Debug：按 P 切換，畫出每個零件的碰撞邊界、接觸探測射線、質心，並用顏色標示空中物理是否接管。
+// 綠=AirPhysics 接管中（kinematic，零件不會飄）、紅=交給 Box2D（一般物理）。
+export const DEBUG = {
+    SHOW_BOUNDS: false,       // 初始是否開啟（遊戲中按 P 可切換）
 };
 
 // 客製化空中物理（AirPhysics，只套用在玩家車）：完全騰空時接管，整車當剛體繞質心轉。
