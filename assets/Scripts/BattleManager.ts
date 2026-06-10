@@ -8,13 +8,13 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, AIRBOX, FLOW, MELEE, MOUSE_TURRET, UPRIGHT, DEBUG } from "./core/GameConstants";
+import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT, DEBUG } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import WallRide from "./battle/WallRide";
+import AirPhysics from "./battle/AirPhysics";
 import StuckRescue from "./battle/StuckRescue";
-import { isWheelNode, isWeaponNode } from "./core/PartUtils";
 import MouseCannon from "./weapons/MouseCannon";
 import FirebaseService from "./net/FirebaseService";
 import MapLoader from "./map/MapLoader";
@@ -84,12 +84,10 @@ export default class BattleManager extends cc.Component {
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
     private wallRide: WallRide | null = null;
+    private airPhysics: AirPhysics | null = null;
     private playerRescue: StuckRescue | null = null;
     private botRescue: StuckRescue | null = null;
     private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
-    private airborne = false;            // 騰空狀態（含遲滯）：決定是否套用 A/D 空中旋轉
-    private airSpin = 0;                 // 空中旋轉指令角速度（度/秒），漸進到 moveDir×ROT_SPEED；落地歸零
-    private wasAirborne = false;         // 上一幀是否騰空（偵測「剛進空中」那一刻，先把角速度歸零）
 
     // Debug 視覺（按 P 切換）
     private debugOn = DEBUG.SHOW_BOUNDS;
@@ -110,7 +108,6 @@ export default class BattleManager extends cc.Component {
         physics.enabled = true;
         (physics as any).enabledContactListener = true;
         physics.enabledAccumulator = true;
-        physics.gravity = cc.v2(0, PHYSICS.GRAVITY_Y);   // 明確設定世界重力，空中靠 rb.gravityScale 做縮放
         cc.PhysicsManager.FIXED_TIME_STEP = PHYSICS.FIXED_TIME_STEP;
         (physics as any).velocityIterations = PHYSICS.VELOCITY_ITERATIONS;
         (physics as any).positionIterations = PHYSICS.POSITION_ITERATIONS;
@@ -260,7 +257,8 @@ export default class BattleManager extends cc.Component {
         if (this.mapLoader) this.mapLoader.loadRandomMap();
 
         this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
-        this.airborne = false;
+        this.airPhysics = new AirPhysics(this.playerCar, this.playerRoot, GROUP.PLAYER_PART);
+        if (this.mapLoader) this.airPhysics.setBoundary(this.mapLoader.getBoundary());   // 把車夾在場內、避免空中飛出地圖
         this.playerRescue = FLOW.USE_STUCK_RESCUE
             ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
             : null;
@@ -351,15 +349,13 @@ export default class BattleManager extends cc.Component {
         // 先跑爬牆（只在貼到陡面時施力，空中不動作），用它判斷是否在牆上。
         if (this.wallRide) this.wallRide.update(dt);
         const onWall = !!(this.wallRide && this.wallRide.isEngaged());
-        // 狀態遲滯：在空中時用「短探測」判落地（要很貼地才算著地），在地面時用「長探測」判起飛
-        // （要明顯離地才算騰空）。兩者之間形成死區 → 貼地開車/顛簸時不會在空中/地面之間反覆抖動。
-        const grounded = this.isGrounded(this.airborne ? AIR.LAND_PROBE : AIR.TAKEOFF_PROBE);
-        // 統一 Box2D：車子永遠是動態體。騰空（沒著地、也沒貼牆）時只做「重力縮放 + A/D 對核心施扭矩旋轉」。
-        this.airborne = !grounded && !onWall;
-        this.updateAirControl(this.airborne);
-        if (!this.airborne && !onWall) {
+        const grounded = this.isGrounded();
+        // 真正騰空（沒著地、也沒貼牆）→ 客製化空中物理接管（繞質心旋轉 + 自由落體）。
+        // 注意：用「著地/貼牆」判斷，而非「附近有沒有東西」，否則在牆邊飛行時會一直被當成接觸 → 不接管 → 交給 Box2D 亂轉。
+        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, grounded, onWall) : false;
+        if (!inAir && !onWall) {
             this.updateAutoRight(grounded);         // 著地且傾斜 → 自動翻正
-            this.updateJet();                       // 噴射輪推力
+            this.updateJet();                       // 空中為純自由落體，不施噴射推力
         }
         this.updatePlayerMelee(dt);
         this.updateDebugDraw();
@@ -412,7 +408,7 @@ export default class BattleManager extends cc.Component {
         const cannons = this.playerCar.mouseCannons;
         if (cannons.length === 0) return;
 
-        // 1) 旋轉瞄準（每幀）。統一 Box2D 後零件一律是動態體，空中也可正常瞄準。
+        // 1) 旋轉瞄準（每幀，無論是否開火）
         for (const c of cannons) {
             if (c.node && c.node.isValid) this.aimTurret(c);
         }
@@ -487,43 +483,8 @@ export default class BattleManager extends cc.Component {
         if (this.matchTimer <= 0) this.startSuddenDeath();
     }
 
-    // 空中按鍵旋轉（HCR 式）：把指令角速度漸進到目標，並「設定」到整車每個零件——不只核心，
-    // 否則其餘焊接零件的角動量會把核心拖回去 → 整車照樣轉、不受 A/D 控制。
-    //   目標 = moveDir×ROT_SPEED（A/←=+1、D/→=-1、放開=0）。直接設角速度 → 不累積、ROT_SPEED 即上限。
-    //   每幀覆寫整車角速度也壓掉輪子反作用；放開漸進回 0 → 不會無輸入亂轉。
-    private updateAirControl(airborne: boolean) {
-        if (!airborne) { this.airSpin = 0; this.wasAirborne = false; return; }   // 落地重置
-        if (!this.playerRoot || !this.playerRoot.isValid) return;
-
-        // 剛進空中那一刻：指令角速度歸零，這一幀把底盤角速度設成 0（不帶入地面/碰撞殘留的旋轉）。
-        const justEntered = !this.wasAirborne;
-        this.wasAirborne = true;
-        if (justEntered) this.airSpin = 0;
-        else this.airSpin += (this.moveDir * AIRBOX.ROT_SPEED - this.airSpin) * AIRBOX.ROT_SMOOTH;   // 漸進（緩進緩出）
-
-        this.playerRoot.getComponentsInChildren(cc.RigidBody).forEach(rb => {
-            const nd = rb.node;
-            if (!nd || !nd.isValid || nd.group !== GROUP.PLAYER_PART) return;
-            if (isWeaponNode(nd)) return;              // 武器交給滑鼠瞄準，不強制
-            if (isWheelNode(nd)) {                     // 空中輪子強制 0 → 不高速亂轉、不對車身產生反作用
-                rb.angularVelocity = 0;
-                rb.awake = true;
-                return;
-            }
-            rb.angularVelocity = this.airSpin;         // 車身底盤（核心＋方塊）一致 → 受控、不被個別零件角動量帶跑
-            rb.awake = true;
-        });
-    }
-
     private updatePlayerMovement() {
         if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return;
-
-        // 空中不驅動輪子：馬達若繼續加速空轉的輪子，反作用扭矩會灌進車身、輪子也會高速亂轉。
-        if (this.airborne) {
-            this.wheelSpeed = 0;
-            for (const j of this.playerCar.wheelJoints) j.motorSpeed = 0;
-            return;
-        }
 
         const targetSpeed = this.moveDir * JOINT.WHEEL_TARGET_SPEED;
         this.wheelSpeed += (targetSpeed - this.wheelSpeed) * JOINT.WHEEL_SMOOTHING;
@@ -564,8 +525,7 @@ export default class BattleManager extends cc.Component {
 
     // 著地偵測：從車上「每個還活著的零件」往正下方打短射線，命中地板/邊界就算著地。
     // 只看「下方」而非四周，所以在牆邊空中飛行時不會被誤判成接觸 → 空中物理能正常接管。
-    // extra = 探測線在零件邊緣外再延伸的長度（狀態遲滯用：落地用短、起飛用長）。
-    private isGrounded(extra: number): boolean {
+    private isGrounded(): boolean {
         if (!this.playerRoot || !this.playerRoot.isValid) return false;
         const pm = cc.director.getPhysicsManager();
         const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
@@ -574,7 +534,7 @@ export default class BattleManager extends cc.Component {
             if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
 
             const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
-            const len = Math.max(node.width, node.height, 40) * 0.5 + extra;
+            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
             const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - len), cc.RayCastType.All);
             for (const r of results) {
                 const g = r.collider.node.group;
@@ -585,9 +545,9 @@ export default class BattleManager extends cc.Component {
     }
 
     // ====================================================================
-    // Debug 視覺（按 P 切換）：畫每個零件的碰撞邊界、接觸探測射線。
-    // 零件外框：綠=在地面、紅=騰空中。
-    // 探測射線：橘=有命中、藍=沒命中。
+    // Debug 視覺（按 P 切換）：畫每個零件的碰撞邊界、接觸探測射線、質心。
+    // 零件外框：綠=AirPhysics 接管中（kinematic，零件不會飄）、紅=交給 Box2D。
+    // 探測射線：橘=有命中（被視為「接觸中」→ 無法進入空中接管）、藍=沒命中。
     // 黃色十字=空中物理算出的質心。用來確認「空中翻滾到底是不是自己的物理在跑」。
     // ====================================================================
     private updateDebugDraw() {
@@ -606,7 +566,8 @@ export default class BattleManager extends cc.Component {
         if (!this.playerRoot || !this.playerRoot.isValid) return;
 
         const toLocal = (w: cc.Vec2) => this.debugNode!.parent!.convertToNodeSpaceAR(w);
-        const partCol = this.airborne ? cc.color(230, 70, 70) : cc.color(60, 220, 90);   // 紅=空中、綠=地面
+        const active = !!(this.airPhysics && this.airPhysics.isActive());
+        const partCol = active ? cc.color(60, 220, 90) : cc.color(230, 70, 70);
         const pm = cc.director.getPhysicsManager();
         const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
 
@@ -646,6 +607,16 @@ export default class BattleManager extends cc.Component {
                 g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
             }
         });
+
+        // 質心
+        if (active && this.airPhysics) {
+            const cm = toLocal(this.airPhysics.getCoM());
+            g.lineWidth = 2; g.strokeColor = cc.color(255, 240, 0);
+            g.moveTo(cm.x - 12, cm.y); g.lineTo(cm.x + 12, cm.y);
+            g.moveTo(cm.x, cm.y - 12); g.lineTo(cm.x, cm.y + 12);
+            g.stroke();
+            g.circle(cm.x, cm.y, 14); g.stroke();
+        }
     }
 
     // 卡住自救：玩家「有按移動鍵卻沒前進」/ Bot 卡住 一段時間後，瞬移到最近可站處
