@@ -246,8 +246,10 @@ export default class ShopManager extends cc.Component {
         let rb = partNode.getComponent(cc.RigidBody);
         if (rb) rb.type = cc.RigidBodyType.Static;
 
-        let col = partNode.getComponent(cc.PhysicsCollider);
-        if (col) col.enabled = false;
+        // 商店內所有零件都保留碰撞框（武器 / 輪子 / 車身 / 核心），讓零件之間有實體碰撞。
+        // 重建存檔車時 prefab 狀態可能殘留 disabled，這裡明確啟用以確保有碰撞框。
+        (partNode.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[])
+            .forEach(c => { c.enabled = true; });
 
         const drag = partNode.getComponent("Draggable") as any;
         if (drag) {
