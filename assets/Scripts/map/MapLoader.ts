@@ -79,8 +79,12 @@ export default class MapLoader extends cc.Component {
     private current: cc.Node | null = null;   // 目前載入的地圖實例（連同視覺與物件都掛在它底下）
     private boundaryPoints: cc.Vec2[] = [];    // 目前地圖邊界多邊形（≈世界座標），供外部（AirPhysics）取用
 
-    // 目前地圖的邊界多邊形點（≈世界座標）。沒有地圖時回傳空陣列。
-    public getBoundary(): cc.Vec2[] { return this.boundaryPoints; }
+    // 目前地圖的邊界多邊形點，轉成「世界座標」回傳（boundaryPoints 是 current 本地座標，
+    // 而 current/MapLoader 節點不在世界原點，必須轉成世界，AirPhysics 才能跟車子的世界座標正確比對）。
+    public getBoundary(): cc.Vec2[] {
+        if (!this.current || !this.current.isValid) return [];
+        return this.boundaryPoints.map(p => this.current!.convertToWorldSpaceAR(cc.v2(p.x, p.y)));
+    }
 
     start() {
         // BattleManager 若有綁定 mapLoader，會在 onLoad 階段先呼叫 loadRandomMap()；

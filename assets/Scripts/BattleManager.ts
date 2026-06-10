@@ -408,9 +408,12 @@ export default class BattleManager extends cc.Component {
         const cannons = this.playerCar.mouseCannons;
         if (cannons.length === 0) return;
 
-        // 1) 旋轉瞄準（每幀，無論是否開火）
-        for (const c of cannons) {
-            if (c.node && c.node.isValid) this.aimTurret(c);
+        // 1) 旋轉瞄準（每幀）。空中時零件是 Kinematic、由 AirPhysics 擺放，這裡不要再設角速度去干擾。
+        const airborne = !!(this.airPhysics && this.airPhysics.isActive());
+        if (!airborne) {
+            for (const c of cannons) {
+                if (c.node && c.node.isValid) this.aimTurret(c);
+            }
         }
 
         // 2) 開火
