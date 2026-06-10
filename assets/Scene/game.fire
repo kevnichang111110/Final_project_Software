@@ -348,16 +348,16 @@
     "voidExtend": 2000,
     "boundaryColor": {
       "__type__": "cc.Color",
-      "r": 58,
-      "g": 60,
-      "b": 66,
+      "r": 120,
+      "g": 125,
+      "b": 132,
       "a": 255
     },
     "voidColor": {
       "__type__": "cc.Color",
-      "r": 165,
-      "g": 172,
-      "b": 181,
+      "r": 50,
+      "g": 52,
+      "b": 58,
       "a": 255
     },
     "visualZIndex": -10,

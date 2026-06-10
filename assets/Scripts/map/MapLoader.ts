@@ -61,10 +61,10 @@ export default class MapLoader extends cc.Component {
     wallThickness: number = 10;
     @property({ tooltip: "牆外淺灰色虛空往外延伸多遠（要夠大才能蓋滿畫面外側）" })
     voidExtend: number = 2000;
-    @property({ tooltip: "邊界牆顏色（深灰）" })
-    boundaryColor: cc.Color = cc.color(58, 60, 66);
-    @property({ tooltip: "牆外虛空顏色（灰）" })
-    voidColor: cc.Color = cc.color(165, 172, 181);
+    @property({ tooltip: "道路路面 / 邊界顏色（中灰）" })
+    boundaryColor: cc.Color = cc.color(120, 125, 132);
+    @property({ tooltip: "牆外虛空顏色（深灰）" })
+    voidColor: cc.Color = cc.color(50, 52, 58);
     @property({ tooltip: "視覺節點的 zIndex（越小越在底層，避免擋住車子）" })
     visualZIndex: number = -10;
 
