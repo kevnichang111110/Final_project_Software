@@ -49,6 +49,8 @@ export default class MapLoader extends cc.Component {
     minSpacing: number = 220;
     @property({ tooltip: "名稱含 spring 的物件是否貼到場地底部（其餘物件就地放置）" })
     springToFloor: boolean = true;
+    @property({ tooltip: "名稱含 seesaw 的翹翹板生成時離地面的高度（要夠高，支點才不會埋進地面被地形推歪）" })
+    seesawSpawnHeight: number = 220;
     @property({ tooltip: "避免把物件生成在玩家 / 電腦車的上方或身上" })
     avoidCars: boolean = true;
     @property({ tooltip: "與車的淨空半徑（物件中心要離任何車這麼遠）" })
@@ -246,9 +248,14 @@ export default class MapLoader extends cc.Component {
             if (!prefab) return;
             const node = cc.instantiate(prefab);
             node.parent = this.current!;
-            if (this.springToFloor && node.name.toLowerCase().includes("spring")) {
+            const lname = node.name.toLowerCase();
+            if (this.springToFloor && lname.includes("spring")) {
                 const floorY = this.getFloorYAt(px, inner);
                 node.setPosition(px, floorY + node.height / 2);
+            } else if (lname.includes("seesaw")) {
+                // 翹翹板要生在地面上方一定高度：支點埋進地面會被地形推歪、也無法正常翹動
+                const floorY = this.getFloorYAt(px, inner);
+                node.setPosition(px, floorY + this.seesawSpawnHeight);
             } else {
                 node.setPosition(px, py);
             }
