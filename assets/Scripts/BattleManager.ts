@@ -349,7 +349,10 @@ export default class BattleManager extends cc.Component {
         // 先跑爬牆（只在貼到陡面時施力，空中不動作），用它判斷是否在牆上。
         if (this.wallRide) this.wallRide.update(dt);
         const onWall = !!(this.wallRide && this.wallRide.isEngaged());
-        const grounded = this.isGrounded();
+        // 狀態遲滯：在空中時用「短探測」判落地（要很貼地才交回 Box2D），在地面時用「長探測」判起飛
+        // （要明顯離地才接管空中）。兩者之間形成死區 → 貼地開車/顛簸時不會在空中/地面之間反覆抖動。
+        const airActive = !!(this.airPhysics && this.airPhysics.isActive());
+        const grounded = this.isGrounded(airActive ? AIR.LAND_PROBE : AIR.TAKEOFF_PROBE);
         // 真正騰空（沒著地、也沒貼牆）→ 客製化空中物理接管（繞質心旋轉 + 自由落體）。
         // 注意：用「著地/貼牆」判斷，而非「附近有沒有東西」，否則在牆邊飛行時會一直被當成接觸 → 不接管 → 交給 Box2D 亂轉。
         const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, grounded, onWall) : false;
@@ -528,7 +531,8 @@ export default class BattleManager extends cc.Component {
 
     // 著地偵測：從車上「每個還活著的零件」往正下方打短射線，命中地板/邊界就算著地。
     // 只看「下方」而非四周，所以在牆邊空中飛行時不會被誤判成接觸 → 空中物理能正常接管。
-    private isGrounded(): boolean {
+    // extra = 探測線在零件邊緣外再延伸的長度（狀態遲滯用：落地用短、起飛用長）。
+    private isGrounded(extra: number): boolean {
         if (!this.playerRoot || !this.playerRoot.isValid) return false;
         const pm = cc.director.getPhysicsManager();
         const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
@@ -537,7 +541,7 @@ export default class BattleManager extends cc.Component {
             if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
 
             const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
-            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
+            const len = Math.max(node.width, node.height, 40) * 0.5 + extra;
             const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - len), cc.RayCastType.All);
             for (const r of results) {
                 const g = r.collider.node.group;
