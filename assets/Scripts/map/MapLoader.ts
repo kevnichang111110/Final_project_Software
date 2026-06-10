@@ -279,7 +279,10 @@ export default class MapLoader extends cc.Component {
         }
     }
 
-    // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝一個大矩形挖掉內界多邊形的洞 ----
+    // ---- 視覺：牆＝沿內界往外的薄實心帶；虛空＝內界往外放大成大環的實心帶 ----
+    // cc.Graphics 是「每個子路徑各自實心填」，不支援跨子路徑挖洞，自交的四邊形還會破洞。
+    // 因此虛空不用「大矩形挖洞」，改成「內界 → 把內界以質心放大 8 倍的外環」之間鋪實心帶：
+    // fillBand 的每塊四邊形都是放射狀梯形（不自交、相鄰共邊不破洞），既蓋滿場外、又絕不碰到內側。
     private drawArena(inner: cc.Vec2[], normals: cc.Vec2[]) {
         const n = inner.length;
         const outer: cc.Vec2[] = [];
@@ -287,43 +290,19 @@ export default class MapLoader extends cc.Component {
             const p = inner[i], nm = normals[i];
             outer.push(cc.v2(p.x + nm.x * this.wallThickness, p.y + nm.y * this.wallThickness));
         }
-        // 虛空：大矩形 + 內界當洞（even-odd），避免舊版「2000px 寬帶在凹角自交」造成的三角形破洞
-        this.fillVoidWithHole(inner, this.voidColor, "arenaVoid", this.visualZIndex - 1);
-        // 牆：內界→外界的薄帶（厚度小、不會自交）；畫在虛空之上蓋住內界~外界那圈
+        // 虛空：內界 → 放大環（蓋滿畫面外側，內側保持透空顯示背景）
+        const far = this.scaleFromCentroid(inner, 8);
+        this.fillBand(inner, far, this.voidColor, "arenaVoid", this.visualZIndex - 1);
+        // 牆：內界→外界的薄帶，畫在虛空之上蓋住內界~外界那圈
         this.fillBand(inner, outer, this.boundaryColor, "arenaWall", this.visualZIndex);
     }
 
-    // 一個遠大於畫面的矩形，挖掉 hole 多邊形 → 只填洞外（牆外虛空）。
-    // cc.Graphics 用 nonzero 環繞規則，外框與洞必須「相反方向」才會挖空：
-    // 外框畫逆時針(CCW)，洞統一轉成順時針(CW)。
-    private fillVoidWithHole(hole: cc.Vec2[], color: cc.Color, name: string, z: number) {
-        const node = new cc.Node(name);
-        node.parent = this.current!;
-        node.setPosition(0, 0);
-        node.zIndex = z;
-
-        const g = node.addComponent(cc.Graphics);
-        g.fillColor = color;
-
-        const R = this.voidExtend + 4000;   // 夠大以蓋滿畫面外側
-        // 外框：逆時針
-        g.moveTo(-R, -R); g.lineTo(R, -R); g.lineTo(R, R); g.lineTo(-R, R); g.close();
-        // 洞：轉成順時針（與外框相反）→ nonzero 下內部環繞數歸零 → 不填 = 挖空
-        const cw = this.signedArea(hole) > 0 ? hole.slice().reverse() : hole;
-        g.moveTo(cw[0].x, cw[0].y);
-        for (let i = 1; i < cw.length; i++) g.lineTo(cw[i].x, cw[i].y);
-        g.close();
-        g.fill();
-    }
-
-    // 多邊形有號面積（>0 為逆時針 CCW）
-    private signedArea(pts: cc.Vec2[]): number {
-        let a = 0;
-        for (let i = 0; i < pts.length; i++) {
-            const p = pts[i], q = pts[(i + 1) % pts.length];
-            a += p.x * q.y - q.x * p.y;
-        }
-        return a * 0.5;
+    // 把多邊形以其質心為中心放大 factor 倍（放射狀，保持拓樸不自交）
+    private scaleFromCentroid(pts: cc.Vec2[], factor: number): cc.Vec2[] {
+        let cx = 0, cy = 0;
+        for (const p of pts) { cx += p.x; cy += p.y; }
+        cx /= pts.length; cy /= pts.length;
+        return pts.map(p => cc.v2(cx + (p.x - cx) * factor, cy + (p.y - cy) * factor));
     }
 
     // 每個頂點朝外的單位法線。
