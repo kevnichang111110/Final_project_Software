@@ -210,6 +210,9 @@ export default class Draggable extends cc.Component {
 
     resetPhysics() {
         if (this.rb) {
+            // 掉成鬆散零件時改用 default 群組：prefab 預設的 PLAYER_PART 在碰撞矩陣裡彼此不互撞，
+            // 會讓武器/輪子互相穿透。default 群組會自撞，零件才能在商店裡堆疊。
+            this.node.group = "default";
             this.rb.type = cc.RigidBodyType.Dynamic;
             this.rb.awake = true;
         }
