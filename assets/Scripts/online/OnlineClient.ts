@@ -66,9 +66,25 @@ export default class OnlineClient extends cc.Component {
         // 每次連線都重新綁定監聽，確保舊的連線不會干擾
         // 如果你的遊戲會反覆進出房間，這裡建議把 handlersInstalled 邏輯拿掉
         if (!room) return;
-
         // 【關鍵】不要用 if (handlersInstalled) return，確保每個 room 都會綁定
         cc.log("[OnlineClient] 正在綁定訊息處理器...");
+
+        room.onMessage("ready_status", (msg: any) => {
+            cc.systemEvent.emit("ONLINE_READY_STATUS", msg);
+        });
+
+        // --- 【修正：補上這一段】 解決遊戲結束沒反應的問題 ---
+        room.onMessage("round_result", (msg: any) => {
+            cc.log(">>> [Step 3] 客戶端收到 round_result 廣播");
+            if (msg.scores) {
+                OnlineRuntime.p1Wins = msg.scores.P1;
+                OnlineRuntime.p2Wins = msg.scores.P2;
+            }
+            
+            // 發送事件給 OnlineBattleManager
+            cc.systemEvent.emit("ONLINE_ROUND_RESULT", msg);
+        });
+        
         room.onMessage("joined", (msg: any) => {
             OnlineRuntime.mySeat = msg.seat === "P2" ? "P2" : "P1";
             OnlineRuntime.roomId = msg.roomId || room.roomId;

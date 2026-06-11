@@ -1,5 +1,6 @@
 import OnlineRuntime, { OnlineGridPart } from "./OnlineRuntime";
 import { GRID } from "../core/GameConstants";
+import GameManager from "../GameManager";
 
 const { ccclass, property } = cc._decorator;
 
@@ -49,8 +50,17 @@ export default class OnlineShopReadyManager extends cc.Component {
 
         this.alreadyReady = true;
         if (this.readyButton) this.readyButton.interactable = false;
-        
-        // 這裡只負責發送資料給伺服器
+
+        // 把目前組裝好的車子保存起來，回到商店時可以重建
+        GameManager.playerCarGrid = grid.map(p => ({
+            partName: p.partName,
+            gridX: p.gridX,
+            gridY: p.gridY
+        }));
+
+        cc.log("[Online] 已保存本地組裝 grid:", JSON.stringify(GameManager.playerCarGrid));
+
+        // 再送給 server
         cc.log("[Online] 發送準備狀態與 Grid 資料");
         OnlineRuntime.room.send("ready", { grid });
 
