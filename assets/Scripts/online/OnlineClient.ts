@@ -108,6 +108,9 @@ export default class OnlineClient extends cc.Component {
         room.onError((code: number, message: string) => {
             cc.error(`[Online] 房間錯誤 (${code}): ${message}`);
         });
+        room.onMessage("startSuddenDeath", () => {
+            cc.systemEvent.emit("ONLINE_START_SUDDEN_DEATH");
+        });
         
     }
 }
