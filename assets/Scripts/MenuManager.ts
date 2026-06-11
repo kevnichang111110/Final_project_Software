@@ -53,7 +53,7 @@ export default class MenuManager extends cc.Component {
     }
     Multiplayer() {
         GameManager.resetAllData();
-        cc.director.loadScene("Shop");
+        cc.director.loadScene("onlineShop");
     }
     onOpenSettings() {
         if (this.settingsPrefab) {
