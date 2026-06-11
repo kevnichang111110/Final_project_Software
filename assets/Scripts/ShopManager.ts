@@ -120,6 +120,7 @@ export default class ShopManager extends cc.Component {
             if (!prefab) continue;
             const part = cc.instantiate(prefab);
             part.parent = this.node;
+            part.group = "default";   // 同 spawnPart：鬆散零件改用 default 群組才會彼此碰撞（武器/輪子）
             part.setPosition(-220 + i * 90, 220);
             const rb = part.getComponent(cc.RigidBody);
             if (rb) rb.type = cc.RigidBodyType.Static;   // 靜止等玩家拖，不會掉走
@@ -246,8 +247,10 @@ export default class ShopManager extends cc.Component {
         let rb = partNode.getComponent(cc.RigidBody);
         if (rb) rb.type = cc.RigidBodyType.Static;
 
-        let col = partNode.getComponent(cc.PhysicsCollider);
-        if (col) col.enabled = false;
+        // 商店內所有零件都保留碰撞框（武器 / 輪子 / 車身 / 核心），讓零件之間有實體碰撞。
+        // 重建存檔車時 prefab 狀態可能殘留 disabled，這裡明確啟用以確保有碰撞框。
+        (partNode.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[])
+            .forEach(c => { c.enabled = true; });
 
         const drag = partNode.getComponent("Draggable") as any;
         if (drag) {
@@ -335,6 +338,9 @@ export default class ShopManager extends cc.Component {
         if (!prefab) return;
         let part = cc.instantiate(prefab);
         part.parent = this.node;
+        // prefab 預設群組是 PLAYER_PART（武器/輪子），而碰撞矩陣設定 PLAYER_PART 之間「不互撞」
+        //（戰鬥中同車零件不該互相碰撞）。商店內鬆散零件要做物理堆疊，必須改成會自撞的 default 群組。
+        part.group = "default";
         let worldPos = btnNode.convertToWorldSpaceAR(cc.v2(0, 0));
         let localPos = this.node.convertToNodeSpaceAR(worldPos);
         part.setPosition(localPos);

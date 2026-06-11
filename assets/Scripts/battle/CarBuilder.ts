@@ -76,6 +76,11 @@ export default class CarBuilder {
 
             CarBuilder.inflateCollider(node);   // 碰撞體稍微外擴，讓車外緣接近實心、薄物件插不進凹口
 
+            // 連續碰撞偵測（CCD）：高速移動時避免「穿進」障礙物 / 翹翹板後卡在裡面
+            //（尤其 Bot 用純 Box2D，沒有玩家 AirPhysics 的掃掠保護）。
+            const partRb = node.getComponent(cc.RigidBody);
+            if (partRb) partRb.bullet = true;
+
             result.partsMap.set(`${data.gridX},${data.gridY}`, node);
 
             // 紀錄遠程武器節點。玩家的槍一律做成「跟隨滑鼠的砲塔」；BOT 的槍維持焊死直射。
@@ -83,6 +88,16 @@ export default class CarBuilder {
             const hasMouseCannon = !!node.getComponent(MouseCannon);
             const isGun = !!drag && drag.partType === PartType.Weapon && drag.weaponMode === WeaponMode.Gun;
             const wantTurret = hasMouseCannon || (side === "PLAYER" && isGun);
+
+            // 槍 / 砲塔（遠程武器）改成 sensor：只偵測傷害、不產生物理碰撞，
+            // 讓槍管穿過敵車與地形、不把車推歪或卡住，砲塔瞄準也完全不受碰撞干擾。
+            // 近戰武器維持實體碰撞（揮砍靠相對速度判傷）。
+            if (isGun) {
+                (node.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[]).forEach(c => {
+                    c.sensor = true;
+                    if ((c as any).apply) (c as any).apply();
+                });
+            }
 
             if (drag && drag.partType === PartType.Weapon) {
                 cc.log(`[CarBuilder] ${side} 武器「${node.name}」 weaponMode=${drag.weaponMode} (0=Melee,1=Gun) MouseCannon=${hasMouseCannon} 砲塔=${wantTurret}`);
@@ -151,8 +166,7 @@ export default class CarBuilder {
                 const gun = !!drag2 && drag2.weaponMode === WeaponMode.Gun;
                 const turret = !!mc || (side === "PLAYER" && gun);
                 if (turret) {
-                    const halfArc = mc && typeof mc.aimHalfArc === "number" ? mc.aimHalfArc : MOUSE_TURRET.HALF_ARC;
-                    const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, halfArc, MOUSE_TURRET.TORQUE);
+                    const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, MOUSE_TURRET.TORQUE);
                     if (tj) {
                         // 弧度中心：建立當下砲管世界角 − 母體(關節所在 body)世界角
                         const c0 = node.convertToWorldSpaceAR(cc.v2(0, 0));
