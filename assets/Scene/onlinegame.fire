@@ -1361,6 +1361,9 @@
     "countdownLabel": {
       "__id__": 22
     },
+    "suddenDeathLabel": {
+      "__id__": 20
+    },
     "resultLabel": {
       "__id__": 16
     },
@@ -1390,7 +1393,9 @@
     "bulletPrefab": {
       "__uuid__": "954308fb-57e0-4316-a7a2-6b0e83b1715b"
     },
-    "mapLoader": null,
+    "mapLoader": {
+      "__id__": 6
+    },
     "gunFireInterval": 0.25,
     "bulletSpeed": 1600,
     "bulletDamage": 20,
