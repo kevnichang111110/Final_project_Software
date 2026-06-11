@@ -88,6 +88,9 @@
       },
       {
         "__id__": 29
+      },
+      {
+        "__id__": 30
       }
     ],
     "_prefab": null,
@@ -1296,8 +1299,8 @@
       "__id__": 2
     },
     "component": "",
-    "_componentId": "15f15Zek8pAoYjkfapAOWE2",
-    "handler": "Multiplayer",
+    "_componentId": "3558eSfhvFJKI5xrY89HOaB",
+    "handler": "connectAndJoin",
     "customEventData": ""
   },
   {
@@ -1355,6 +1358,22 @@
     "settingsPrefab": {
       "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
     },
+    "bgmClip": null,
+    "leaderboardPanel": null,
+    "ProfilePanel": null,
     "_id": "e9vOPlCV5IFK6vljaPml1o"
+  },
+  {
+    "__type__": "3558eSfhvFJKI5xrY89HOaB",
+    "_name": "",
+    "_objFlags": 0,
+    "node": {
+      "__id__": 2
+    },
+    "_enabled": true,
+    "serverUrl": "ws://127.0.0.1:2567",
+    "roomName": "car_room",
+    "statusLabel": null,
+    "_id": "49viFoGWFGVbhie4syzEMh"
   }
 ]
