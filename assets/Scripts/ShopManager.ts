@@ -71,12 +71,20 @@ export default class ShopManager extends cc.Component {
         physics.enabled = true;
         physics.gravity = cc.v2(0, -960);
 
+        // 多人模式：每次回到商店都重置金錢，讓每回合雙方有相同的固定預算（公平）
+        if (OnlineRuntime.isOnline()) GameManager.gold = 200;
+
         this.updateGoldDisplay();
         this.updateScoreDisplay();
         this.checkSpecialRoundAnnouncement();
 
-        if (GameManager.playerCarGrid.length > 0) {
-            this.reconstructCarForEditing();
+        // 還原上一場的車：線上要讀「自己座位」的 grid（伺服器回傳的 p1/p2），
+        // 否則 P2 會讀到 GameManager.playerCarGrid（可能是別人的或被覆蓋）→ 武器被刷掉
+        const restoreGrid: GridPart[] = OnlineRuntime.isOnline()
+            ? ((OnlineRuntime.mySeat === "P1" ? OnlineRuntime.p1Grid : OnlineRuntime.p2Grid) as GridPart[])
+            : GameManager.playerCarGrid;
+        if (restoreGrid.length > 0) {
+            this.reconstructCarForEditing(restoreGrid);
         } else {
             this.ensureCoreInAssembly();
         }
@@ -131,12 +139,12 @@ export default class ShopManager extends cc.Component {
         this.showFlashingNotice("搶到的道具已送達！", cc.Color.GREEN);
     }
 
-    reconstructCarForEditing() {
+    reconstructCarForEditing(grid: GridPart[] = GameManager.playerCarGrid) {
         let partLayer = this.getPartLayer();
         if (!partLayer) return;
         partLayer.removeAllChildren();
 
-        for (let data of GameManager.playerCarGrid) {
+        for (let data of grid) {
             let prefab = this.getPrefabByName(data.partName);
             if (prefab) {
                 let partNode = cc.instantiate(prefab);

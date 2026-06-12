@@ -26,6 +26,9 @@ const SHAKE_OVERSCALE = 1.15;
 export default class HitFeedback extends cc.Component {
     private static instance: HitFeedback | null = null;
 
+    // 線上 host 設定：每次觸發打擊回饋時回報（世界座標、傷害），供同步打擊火花到對手畫面
+    public static onTrigger: ((worldPos: cc.Vec2, damage: number) => void) | null = null;
+
     private trauma: number = 0;
     private elapsed: number = 0;          // 抖動相位用的時間累加器
     private hitstopActive: boolean = false;
@@ -112,6 +115,8 @@ export default class HitFeedback extends cc.Component {
     static trigger(damage: number, worldPos?: cc.Vec2) {
         const inst = HitFeedback.instance;
         if (!inst || damage < HITFX.MIN_DAMAGE) return;
+
+        if (HitFeedback.onTrigger && worldPos) HitFeedback.onTrigger(worldPos, damage);
 
         inst.addTrauma(Math.min(HITFX.SHAKE_MAX_TRAUMA, damage * HITFX.SHAKE_PER_DAMAGE));
 
