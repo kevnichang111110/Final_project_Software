@@ -360,12 +360,15 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
         if (this.mode === "HOST") {
             const boundary = this.mapLoader ? this.mapLoader.getBoundary() : null;
+            // P1（己方、非鏡像）：完整手感，與本地玩家車一致
             this.ctrlA = new CarCtrl(this.playerCar, this.playerRoot!, "PLAYER", this.weapons!, {
                 useWallRide: FLOW.USE_WALLRIDE, useStuckRescue: FLOW.USE_STUCK_RESCUE,
                 airBoundary: boundary, gunFireInterval: this.gunFireInterval,
             });
+            // P2（對手、scaleX=-1 + root 180）：關掉 WallRide/AirPhysics/StuckRescue，
+            // 這幾套對「鏡像/旋轉車」的計算會把車塞進牆（沿用舊線上對 P2 的最小控制）。
             this.ctrlB = new CarCtrl(this.botCar, this.botRoot!, "BOT", this.weapons!, {
-                useWallRide: FLOW.USE_WALLRIDE, useStuckRescue: FLOW.USE_STUCK_RESCUE,
+                useWallRide: false, useAirPhysics: false, useStuckRescue: false,
                 airBoundary: boundary, gunFireInterval: this.gunFireInterval,
             });
         }
