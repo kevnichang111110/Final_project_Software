@@ -8,15 +8,14 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, JOINT, GROUP, AIR, FLOW, MELEE, MOUSE_TURRET, UPRIGHT, DEBUG } from "./core/GameConstants";
+import { PHYSICS, BATTLE, GROUP, AIR, FLOW, DEBUG } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
 import Bullet from "./Bullet";
-import WallRide from "./battle/WallRide";
-import AirPhysics from "./battle/AirPhysics";
 import StuckRescue from "./battle/StuckRescue";
-import MouseCannon from "./weapons/MouseCannon";
+import CarCtrl from "./battle/CarCtrl";
+import { OnlineInputState } from "./online/OnlineRuntime";
 import FirebaseService from "./net/FirebaseService";
 import MapLoader from "./map/MapLoader";
 import HitFeedback from "./fx/HitFeedback";
@@ -62,20 +61,8 @@ export default class BattleManager extends cc.Component {
     private startCountdownTimer = 0;
     private startCountdownValue = BATTLE.COUNTDOWN_FROM;
 
-    private moveDir = 0;
-    private isAttacking = false;
-    private isBoosting = false;          // 噴射 boost（W / ↑）
-    private wheelSpeed = 0;
-    private playerGunCooldown = 0;
-
-    // 滑鼠砲
-    private isMouseDown = false;
-    private mouseWorldPos: cc.Vec2 = cc.v2(0, 0);
-    private mouseCannonCooldown = 0;
-
-    // 近戰揮砍冷卻
-    private meleeCooldown = 0;
-    private meleeSwinging = false;
+    // 本機這台車（玩家）的輸入，統一用 OnlineInputState 結構（worldDir A/左=+1、D/右=-1，沿用本地慣例）
+    private localInput: OnlineInputState = { worldDir: 0, attack: false, boost: false, mouseDown: false, mouseX: 0, mouseY: 0 };
 
     private playerRoot: cc.Node | null = null;
     private botRoot: cc.Node | null = null;
@@ -84,11 +71,10 @@ export default class BattleManager extends cc.Component {
     private botCar: BuiltCar | null = null;
     private botAI: BotAI | null = null;
     private weapons: WeaponSystem | null = null;
-    private wallRide: WallRide | null = null;
-    private airPhysics: AirPhysics | null = null;
-    private playerRescue: StuckRescue | null = null;
+
+    // 逐車控制器：玩家車的完整操控（輪子/近戰/槍/砲/噴射/翻正/爬牆/空中物理/自救）
+    private ctrlA: CarCtrl | null = null;
     private botRescue: StuckRescue | null = null;
-    private righting = false;            // 自動翻正遲滯狀態：是否正在把車翻回直立
 
     // Debug 視覺（按 P 切換）
     private debugOn = DEBUG.SHOW_BOUNDS;
@@ -207,15 +193,7 @@ export default class BattleManager extends cc.Component {
         this.isBattleStarted = false;
         this.isTimerFlashing = false;
         this.matchTimer = BATTLE.MATCH_TIME;
-        this.moveDir = 0;
-        this.isAttacking = false;
-        this.isBoosting = false;
-        this.isMouseDown = false;
-        this.wheelSpeed = 0;
-        this.playerGunCooldown = 0;
-        this.mouseCannonCooldown = 0;
-        this.meleeCooldown = 0;
-        this.meleeSwinging = false;
+        this.localInput = { worldDir: 0, attack: false, boost: false, mouseDown: false, mouseX: 0, mouseY: 0 };
         this.playerCar = null;
         this.botCar = null;
         this.botAI = null;
@@ -257,12 +235,13 @@ export default class BattleManager extends cc.Component {
         // 玩家車已建好 → 重新挑一張預設地圖（避免車的物件壓在玩家身上）
         if (this.mapLoader) this.mapLoader.loadRandomMap();
 
-        this.wallRide = FLOW.USE_WALLRIDE ? new WallRide(this.playerCar, this.playerRoot, GROUP.PLAYER_PART) : null;
-        this.airPhysics = new AirPhysics(this.playerCar, this.playerRoot, GROUP.PLAYER_PART);
-        if (this.mapLoader) this.airPhysics.setBoundary(this.mapLoader.getBoundary());   // 把車夾在場內、避免空中飛出地圖
-        this.playerRescue = FLOW.USE_STUCK_RESCUE
-            ? new StuckRescue(this.playerCar, this.playerRoot, GROUP.PLAYER_PART, this.coreWorldPos(this.playerCar) || cc.v2(0, 0))
-            : null;
+        // 玩家車的逐車控制器（含爬牆/空中物理/卡住自救）
+        this.ctrlA = new CarCtrl(this.playerCar, this.playerRoot, "PLAYER", this.weapons, {
+            useWallRide: FLOW.USE_WALLRIDE,
+            useStuckRescue: FLOW.USE_STUCK_RESCUE,
+            airBoundary: this.mapLoader ? this.mapLoader.getBoundary() : null,
+            gunFireInterval: this.gunFireInterval,
+        });
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
@@ -279,7 +258,7 @@ export default class BattleManager extends cc.Component {
         if (this.playerRoot && this.playerRoot.isValid) this.playerRoot.destroy();
         if (this.botRoot && this.botRoot.isValid) this.botRoot.destroy();
         this.recycleLiveBullets();
-        this.playerRescue = null;
+        this.ctrlA = null;
         this.botRescue = null;
         this.unschedule(this.suddenDeathTick);
         this.unschedule(this.spawnSuddenDeathPart);
@@ -348,31 +327,18 @@ export default class BattleManager extends cc.Component {
             return;
         }
 
-        this.updatePlayerGun(dt);
-
         if (this.botAI && this.playerRoot && this.botRoot && this.weapons) {
             this.botAI.update(dt, this.playerRoot, this.botRoot, this.weapons);
         }
 
         this.updateMatchTimer(dt);
-        this.updatePlayerMovement();
-        this.updateStuckRescue(dt);
 
-        // 先跑爬牆（只在貼到陡面時施力，空中不動作），用它判斷是否在牆上。
-        if (this.wallRide) this.wallRide.update(dt);
-        const onWall = !!(this.wallRide && this.wallRide.isEngaged());
-        const grounded = this.isGrounded();
-        // 真正騰空（沒著地、也沒貼牆）→ 客製化空中物理接管（繞質心旋轉 + 自由落體）。
-        // 注意：用「著地/貼牆」判斷，而非「附近有沒有東西」，否則在牆邊飛行時會一直被當成接觸 → 不接管 → 交給 Box2D 亂轉。
-        const inAir = this.airPhysics ? this.airPhysics.update(dt, this.moveDir, grounded, onWall) : false;
-        if (!inAir && !onWall) {
-            this.updateAutoRight(grounded);         // 著地且傾斜 → 自動翻正
-            this.updateJet();                       // 空中為純自由落體，不施噴射推力
-        }
-        // 砲塔瞄準必須在空中物理之後跑：AirPhysics 會每幀把零件擺回標準角度，
-        // 在它之後才設砲管角度，地面與空中才都能正常面向游標。
-        this.updateMouseCannons(dt);
-        this.updatePlayerMelee(dt);
+        // 玩家車：完整逐車操控（槍/移動/自救/爬牆/空中物理/翻正/噴射/砲塔/近戰）
+        if (this.ctrlA) this.ctrlA.update(this.localInput, dt, this.coreWorldPos(this.botCar));
+
+        // Bot 卡住自救（敵方仍由 BotAI 驅動，不走 CarCtrl）
+        if (this.botRescue) this.botRescue.update(dt, !!this.botAI, this.coreWorldPos(this.playerCar));
+
         this.updateDebugDraw();
     }
 
@@ -403,83 +369,6 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    private updatePlayerGun(dt: number) {
-        this.playerGunCooldown = Math.max(0, this.playerGunCooldown - dt);
-        if (!this.playerCar || !this.weapons) return;
-
-        // 遠程槍改用滑鼠左鍵發射（近戰仍維持空白鍵）
-        if (this.isMouseDown && this.playerCar.gunNodes.length > 0 && this.playerGunCooldown <= 0) {
-            for (const gunNode of this.playerCar.gunNodes) {
-                this.weapons.fireFrom(gunNode, "PLAYER");
-            }
-            this.playerGunCooldown = this.gunFireInterval;
-        }
-    }
-
-    // 滑鼠瞄準砲：每幀讓砲塔轉向游標（受角度限制），按住左鍵沿砲管方向開火（無差別傷害）
-    private updateMouseCannons(dt: number) {
-        this.mouseCannonCooldown = Math.max(0, this.mouseCannonCooldown - dt);
-        if (!this.playerCar || !this.weapons) return;
-        const cannons = this.playerCar.mouseCannons;
-        if (cannons.length === 0) return;
-
-        // 1) 旋轉瞄準（每幀，無論是否開火）
-        for (const c of cannons) {
-            if (c.node && c.node.isValid) this.aimTurret(c, dt);
-        }
-
-        // 2) 開火
-        if (!this.isMouseDown || this.mouseCannonCooldown > 0) return;
-        let interval = 0.18;
-        for (const c of cannons) {
-            if (!c.node || !c.node.isValid) continue;
-            const mc = c.node.getComponent(MouseCannon);
-            if (mc) interval = mc.fireInterval;
-            this.weapons.fireFrom(c.node, "PLAYER", {
-                speed: mc ? mc.bulletSpeed : undefined,
-                damage: mc ? mc.bulletDamage : undefined,
-                lifetime: mc ? mc.bulletLifetime : undefined,
-                damagesAll: !!mc,
-            });
-            const audio = c.node.getComponent("PartAudio") as any;
-            if (audio && audio.playAttack) audio.playAttack();
-        }
-        this.mouseCannonCooldown = interval;
-    }
-
-    // 讓砲管轉向游標：直接設武器節點角度（而非角速度）→ 對睡眠/sensor 剛體與空中 Kinematic 都可靠。
-    // 目標角先夾在 ±HALF_ARC（相對母體朝向）→ 砲管/準星線不會超出弧度、也不會去頂硬體上限。
-    private aimTurret(c: { node: cc.Node, joint: cc.RevoluteJoint, mountOffset: number }, dt: number) {
-        const weaponNode = c.node, joint = c.joint;
-        if (!joint || !joint.isValid) return;
-        const weaponRb = weaponNode.getComponent(cc.RigidBody);
-        const parent = joint.node;   // 關節所在的母體 body
-        if (!weaponRb || !parent || !parent.isValid) return;
-
-        const center = weaponNode.convertToWorldSpaceAR(cc.v2(0, 0));
-        const fp = weaponNode.getChildByName("firepoint");
-        const muzzle = fp
-            ? fp.convertToWorldSpaceAR(cc.v2(0, 0))
-            : weaponNode.convertToWorldSpaceAR(cc.v2(40, 0));
-        const cur = Math.atan2(muzzle.y - center.y, muzzle.x - center.x) * 180 / Math.PI;
-
-        const toMouse = this.mouseWorldPos.sub(center);
-        if (toMouse.mag() < 1) return;
-        const aim = Math.atan2(toMouse.y, toMouse.x) * 180 / Math.PI;
-
-        // 不限制弧度：砲管直接朝游標（360° 自由瞄準）
-        let err = aim - cur;
-        while (err > 180) err -= 360; while (err < -180) err += 360;
-
-        // 直接設角度，每幀轉動量以 AIM_SPEED（度/秒）設上限（轉速感跟原本一致），
-        // 再把角速度歸零避免物理殘留漂移，最後把節點 transform 推進物理世界。
-        const maxStep = MOUSE_TURRET.AIM_SPEED * dt;
-        weaponNode.angle += cc.misc.clampf(err, -maxStep, maxStep);
-        weaponRb.angularVelocity = 0;
-        const anyRb = weaponRb as any;
-        if (anyRb.syncRotation) anyRb.syncRotation(false);
-    }
-
     private updateMatchTimer(dt: number) {
         if (this.isSuddenDeath) return;
 
@@ -497,67 +386,6 @@ export default class BattleManager extends cc.Component {
         }
 
         if (this.matchTimer <= 0) this.startSuddenDeath();
-    }
-
-    private updatePlayerMovement() {
-        if (!this.playerCar || this.playerCar.wheelJoints.length === 0) return;
-
-        const targetSpeed = this.moveDir * JOINT.WHEEL_TARGET_SPEED;
-        this.wheelSpeed += (targetSpeed - this.wheelSpeed) * JOINT.WHEEL_SMOOTHING;
-
-        for (const j of this.playerCar.wheelJoints) {
-            const mul = this.playerCar.wheelMultipliers.get(j) ?? 1;
-            j.motorSpeed = this.wheelSpeed * mul;
-        }
-    }
-
-    // 空中左右旋轉（第 5 點）：只有「完全沒有接觸任何牆/地板/物件」時 A/D 才旋轉車身；
-    // 只要有任何接觸（地板、牆、敵車、障礙物）就交給輪子前進後退，不硬翻。
-    // 自動翻正：只在「車身接近翻倒」時才把車轉回直立（遲滯，修正到接近直立才停）。
-    // 牆/斜面交給 WallRide 對齊；在地面小傾斜時不介入，避免兩套對齊力互打造成亂彈。
-    private updateAutoRight(touching: boolean) {
-        if (!UPRIGHT.ENABLED || !touching) { this.righting = false; return; }
-        if (!this.playerCar || !this.playerCar.coreNode) { this.righting = false; return; }
-        if (this.wallRide && this.wallRide.isEngaged()) { this.righting = false; return; }
-        const core = this.playerCar.coreNode;
-        const rb = core.getComponent(cc.RigidBody);
-        if (!rb) return;
-
-        // 車身相對「世界直立」的傾角，正規化到 -180~180
-        let ang = core.angle % 360;
-        if (ang > 180) ang -= 360;
-        if (ang < -180) ang += 360;
-
-        // 遲滯：傾角夠大才啟動，修正到夠小才關閉
-        const mag = Math.abs(ang);
-        if (mag > UPRIGHT.TRIGGER_ANGLE) this.righting = true;
-        else if (mag < UPRIGHT.RELEASE_ANGLE) this.righting = false;
-        if (!this.righting) return;
-
-        let torque = (-ang * UPRIGHT.GAIN) - rb.angularVelocity * UPRIGHT.DAMP;
-        torque = cc.misc.clampf(torque, -UPRIGHT.MAX_TORQUE, UPRIGHT.MAX_TORQUE);
-        (rb as any).applyTorque(torque, true);
-    }
-
-    // 著地偵測：從車上「每個還活著的零件」往正下方打短射線，命中地板/邊界就算著地。
-    // 只看「下方」而非四周，所以在牆邊空中飛行時不會被誤判成接觸 → 空中物理能正常接管。
-    private isGrounded(): boolean {
-        if (!this.playerRoot || !this.playerRoot.isValid) return false;
-        const pm = cc.director.getPhysicsManager();
-        const bodies = this.playerRoot.getComponentsInChildren(cc.RigidBody);
-        for (const rb of bodies) {
-            const node = rb.node;
-            if (!node || !node.isValid || node.group !== GROUP.PLAYER_PART) continue;
-
-            const o = node.convertToWorldSpaceAR(cc.v2(0, 0));
-            const len = Math.max(node.width, node.height, 40) * 0.5 + AIR.GROUNDED_PROBE;
-            const results = pm.rayCast(cc.v2(o.x, o.y), cc.v2(o.x, o.y - len), cc.RayCastType.All);
-            for (const r of results) {
-                const g = r.collider.node.group;
-                if (g === GROUP.DEFAULT || g === GROUP.BOUNDARY) return true;
-            }
-        }
-        return false;
     }
 
     // ====================================================================
@@ -582,7 +410,8 @@ export default class BattleManager extends cc.Component {
         if (!this.playerRoot || !this.playerRoot.isValid) return;
 
         const toLocal = (w: cc.Vec2) => this.debugNode!.parent!.convertToNodeSpaceAR(w);
-        const active = !!(this.airPhysics && this.airPhysics.isActive());
+        const airPhysics = this.ctrlA ? this.ctrlA.airPhysics : null;
+        const active = !!(airPhysics && airPhysics.isActive());
         const partCol = active ? cc.color(60, 220, 90) : cc.color(230, 70, 70);
         const pm = cc.director.getPhysicsManager();
         const dirs = [cc.v2(0, -1), cc.v2(0, 1), cc.v2(-1, 0), cc.v2(1, 0)];
@@ -625,8 +454,8 @@ export default class BattleManager extends cc.Component {
         });
 
         // 質心
-        if (active && this.airPhysics) {
-            const cm = toLocal(this.airPhysics.getCoM());
+        if (active && airPhysics) {
+            const cm = toLocal(airPhysics.getCoM());
             g.lineWidth = 2; g.strokeColor = cc.color(255, 240, 0);
             g.moveTo(cm.x - 12, cm.y); g.lineTo(cm.x + 12, cm.y);
             g.moveTo(cm.x, cm.y - 12); g.lineTo(cm.x, cm.y + 12);
@@ -635,64 +464,9 @@ export default class BattleManager extends cc.Component {
         }
     }
 
-    // 卡住自救：玩家「有按移動鍵卻沒前進」/ Bot 卡住 一段時間後，瞬移到最近可站處
-    private updateStuckRescue(dt: number) {
-        if (this.playerRescue) {
-            this.playerRescue.update(dt, this.moveDir !== 0, this.coreWorldPos(this.botCar));
-        }
-        if (this.botRescue) {
-            this.botRescue.update(dt, !!this.botAI, this.coreWorldPos(this.playerCar));
-        }
-    }
-
     private coreWorldPos(car: BuiltCar | null): cc.Vec2 | null {
         if (!car || !car.coreNode || !car.coreNode.isValid) return null;
         return car.coreNode.convertToWorldSpaceAR(cc.v2(0, 0));
-    }
-
-    // 噴射輪（第 4 點）：按住 boost 時每幀向上推
-    private updateJet() {
-        if (!this.isBoosting || !this.playerCar) return;
-        for (const ab of this.playerCar.wheelAbilities) {
-            if (ab && ab.applyJet) ab.applyJet();
-        }
-    }
-
-    // 近戰揮砍：按住攻擊時，揮出 → 收回 → 冷卻 → 再揮，週期之間有冷卻時間。
-    private updatePlayerMelee(dt: number) {
-        if (!this.playerCar || this.playerCar.weaponJoints.length === 0) return;
-        const hasWheel = this.playerCar.wheelJoints.length > 0;
-
-        if (this.meleeCooldown > 0) this.meleeCooldown = Math.max(0, this.meleeCooldown - dt);
-
-        // 冷卻結束且持續攻擊 → 開始新的一次揮砍
-        if (!this.meleeSwinging && this.isAttacking && this.meleeCooldown <= 0) {
-            this.meleeSwinging = true;
-            this.meleeCooldown = MELEE.COOLDOWN;
-        }
-
-        let allReachedTop = true;
-        for (const j of this.playerCar.weaponJoints) {
-            j.enableMotor = hasWheel;
-            const cur = j.getJointAngle();
-            if (this.meleeSwinging) {
-                // 揮出到上限
-                if (cur < j.upperAngle - MELEE.REACH_TOLERANCE) {
-                    j.motorSpeed = JOINT.MELEE_ATTACK_SPEED;
-                    allReachedTop = false;
-                } else {
-                    j.motorSpeed = 0;
-                }
-            } else {
-                // 收回到下限
-                j.motorSpeed = cur > j.lowerAngle ? JOINT.MELEE_RETURN_SPEED : 0;
-            }
-        }
-
-        // 全部揮到頂 → 結束這次揮砍，開始收回（冷卻仍在倒數，冷卻完才會再揮）
-        if (this.meleeSwinging && allReachedTop) {
-            this.meleeSwinging = false;
-        }
     }
 
     // ====================================================================
@@ -832,18 +606,18 @@ export default class BattleManager extends cc.Component {
         switch (event.keyCode) {
             case cc.macro.KEY.a:
             case cc.macro.KEY.left:
-                this.moveDir = 1;
+                this.localInput.worldDir = 1;   // 本地慣例：A/左 = +1
                 break;
             case cc.macro.KEY.d:
             case cc.macro.KEY.right:
-                this.moveDir = -1;
+                this.localInput.worldDir = -1;
                 break;
             case cc.macro.KEY.space:
-                this.isAttacking = true;
+                this.localInput.attack = true;
                 break;
             case cc.macro.KEY.w:
             case cc.macro.KEY.up:
-                this.isBoosting = true;   // 噴射 boost
+                this.localInput.boost = true;   // 噴射 boost
                 break;
             case cc.macro.KEY.p:
                 this.debugOn = !this.debugOn;   // 切換 debug 邊界視覺
@@ -857,18 +631,18 @@ export default class BattleManager extends cc.Component {
         switch (event.keyCode) {
             case cc.macro.KEY.a:
             case cc.macro.KEY.left:
-                if (this.moveDir === 1) this.moveDir = 0;
+                if (this.localInput.worldDir === 1) this.localInput.worldDir = 0;
                 break;
             case cc.macro.KEY.d:
             case cc.macro.KEY.right:
-                if (this.moveDir === -1) this.moveDir = 0;
+                if (this.localInput.worldDir === -1) this.localInput.worldDir = 0;
                 break;
             case cc.macro.KEY.space:
-                this.isAttacking = false;
+                this.localInput.attack = false;
                 break;
             case cc.macro.KEY.w:
             case cc.macro.KEY.up:
-                this.isBoosting = false;
+                this.localInput.boost = false;
                 break;
         }
     }
@@ -876,20 +650,20 @@ export default class BattleManager extends cc.Component {
     // 滑鼠：直接用 getLocation 當世界座標（與遊戲既有的節點世界座標系一致）
     private onMouseMove(e: cc.Event.EventMouse) {
         const p = e.getLocation();
-        this.mouseWorldPos = cc.v2(p.x, p.y);
+        this.localInput.mouseX = p.x;
+        this.localInput.mouseY = p.y;
     }
 
     private onMouseDown(e: cc.Event.EventMouse) {
         if (e.getButton() === cc.Event.EventMouse.BUTTON_LEFT) {
-            this.isMouseDown = true;
+            this.localInput.mouseDown = true;
             this.onMouseMove(e);
-            cc.log(`[BattleManager] 左鍵按下，滑鼠座標=(${this.mouseWorldPos.x.toFixed(0)}, ${this.mouseWorldPos.y.toFixed(0)})`);
         }
     }
 
     private onMouseUp(e: cc.Event.EventMouse) {
         if (e.getButton() === cc.Event.EventMouse.BUTTON_LEFT) {
-            this.isMouseDown = false;
+            this.localInput.mouseDown = false;
         }
     }
 
