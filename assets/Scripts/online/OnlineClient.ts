@@ -20,17 +20,22 @@ export default class OnlineClient extends cc.Component {
 
     //private static handlersInstalled: boolean = false;
     private isConnecting: boolean = false;
+    private cancelRequested: boolean = false;
+    private origMpText: string | null = null;   // Multiplayer 按鈕原始文字（第一次連線時記住）
 
     // 連線進度條（程式生成，免編輯器綁定）
     private progRoot: cc.Node | null = null;
     private progFill: cc.Node | null = null;
 
     public async connectAndJoin() {
+        // 連線中再按一次 = 取消配對
         if (this.isConnecting) {
-            cc.warn("正在連線中，請勿重複點擊");
+            this.cancelConnect();
             return;
         }
         this.isConnecting = true;
+        this.cancelRequested = false;
+        this.setConnectingUI(true);
 
         this.showProgress();
         this.setProgress(0.12);
@@ -51,8 +56,7 @@ export default class OnlineClient extends cc.Component {
         if (typeof Colyseus === "undefined") {
             cc.error("❌ 找不到 Colyseus 插件！請確認 colyseus.js 已經勾選 Import As Plugin。");
             if (this.statusLabel) this.statusLabel.string = "插件載入失敗";
-            this.hideProgress();
-            this.isConnecting = false;
+            this.afterCancelled();
             return;
         }
 
@@ -67,6 +71,13 @@ export default class OnlineClient extends cc.Component {
             const room = await client.joinOrCreate(this.roomName, {
                 name: myLocalName
             });
+
+            // join 進行中時若按了取消 → 進房後立刻退出，不繼續
+            if (this.cancelRequested) {
+                try { room.leave(); } catch (e) {}
+                this.afterCancelled();
+                return;
+            }
 
             OnlineRuntime.room = room;
             OnlineRuntime.roomId = room.roomId;
@@ -88,9 +99,55 @@ export default class OnlineClient extends cc.Component {
                 errorMsg = "版本不相容 (請檢查 colyseus.js 修改)";
             }
             if (this.statusLabel) this.statusLabel.string = "失敗: " + errorMsg;
-            this.hideProgress();
-            this.isConnecting = false;
+            this.afterCancelled();
         }
+    }
+
+    // ==================== 取消連線 / UI 切換 ====================
+    private cancelConnect() {
+        this.cancelRequested = true;
+        if (OnlineRuntime.room) { try { OnlineRuntime.room.leave(); } catch (e) {} }
+        OnlineRuntime.clearMatch();   // room=null + 重置配對狀態
+        if (this.statusLabel) this.statusLabel.string = "已取消";
+        this.afterCancelled();
+    }
+
+    private afterCancelled() {
+        this.hideProgress();
+        this.setConnectingUI(false);
+        this.isConnecting = false;
+    }
+
+    // 連線中：禁用 Singleplayer 並變灰；Multiplayer 文字切「取消配對」
+    private setConnectingUI(on: boolean) {
+        const sp = this.findNode("Singleplayer");
+        if (sp) {
+            const btn = sp.getComponent(cc.Button);
+            if (btn) btn.interactable = !on;
+            sp.opacity = on ? 120 : 255;
+        }
+        const mp = this.findNode("Multiplayer");
+        if (mp) {
+            const label = mp.getComponentInChildren(cc.Label);
+            if (label) {
+                if (this.origMpText === null) this.origMpText = label.string;
+                label.string = on ? "取消配對" : (this.origMpText || "Multiplayer");
+            }
+        }
+    }
+
+    // 從 Canvas 依名稱遞迴找節點（容忍任何巢狀結構，免編輯器綁定）
+    private findNode(name: string): cc.Node | null {
+        const canvas = cc.find("Canvas");
+        return canvas ? this.searchByName(canvas, name) : null;
+    }
+    private searchByName(root: cc.Node, name: string): cc.Node | null {
+        if (root.name === name) return root;
+        for (const child of root.children) {
+            const found = this.searchByName(child, name);
+            if (found) return found;
+        }
+        return null;
     }
 
     // ==================== 連線進度條（程式生成）====================
