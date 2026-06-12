@@ -34,7 +34,7 @@ export default class GameManager {
         [
             { gridX: 0, gridY: 1, partName: "Body1" },
             { gridX: 1, gridY: 1, partName: "Core" },
-            { gridX: 2, gridY: 1, partName: "Body1" },
+            { gridX: 2, gridY: 1, partName: "Body3" },
             { gridX: 0, gridY: 0, partName: "Wheel1" },
             { gridX: 2, gridY: 0, partName: "Wheel1" },
             { gridX: 3, gridY: 1, partName: "Weapon1" }

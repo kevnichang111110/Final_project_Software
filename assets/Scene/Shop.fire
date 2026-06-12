@@ -5681,6 +5681,12 @@
       },
       {
         "__id__": 130
+      },
+      {
+        "__id__": 144
+      },
+      {
+        "__id__": 145
       }
     ],
     "slotIcons": [
@@ -6709,5 +6715,31 @@
       "height": 200
     },
     "_id": "30aolsJPtCEaMcNkZkchYY"
+  },
+  {
+    "__type__": "ItemData",
+    "name": "Body2",
+    "price": 30,
+    "icon": {
+      "__uuid__": "b949fd17-8a9d-491f-8538-63b68c715e28"
+    },
+    "partPrefab": {
+      "__uuid__": "ad22639c-23fd-4a8f-b191-77e25d2c99cd"
+    },
+    "unlockRound": 0,
+    "category": 0
+  },
+  {
+    "__type__": "ItemData",
+    "name": "Body3",
+    "price": 60,
+    "icon": {
+      "__uuid__": "0d090197-f6dc-4dcc-9f5c-a3ecb4ec5c94"
+    },
+    "partPrefab": {
+      "__uuid__": "6937dca2-a99a-44c1-afb1-0f02dddd0bc1"
+    },
+    "unlockRound": 0,
+    "category": 0
   }
 ]
