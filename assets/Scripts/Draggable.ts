@@ -213,6 +213,10 @@ export default class Draggable extends cc.Component {
             // 掉成鬆散零件時改用 default 群組：prefab 預設的 PLAYER_PART 在碰撞矩陣裡彼此不互撞，
             // 會讓武器/輪子互相穿透。default 群組會自撞，零件才能在商店裡堆疊。
             this.node.group = "default";
+            // 此節點的 box2d fixture 早已建立，改 node.group 不會自動重建過濾器；
+            // 必須對每個 PhysicsCollider 呼叫 apply() 重建 fixture，新的 default 群組才會生效。
+            (this.node.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[])
+                .forEach(c => c.apply());
             this.rb.type = cc.RigidBodyType.Dynamic;
             this.rb.awake = true;
         }
