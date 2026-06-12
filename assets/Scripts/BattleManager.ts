@@ -8,7 +8,7 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, GROUP, AIR, FLOW, DEBUG } from "./core/GameConstants";
+import { PHYSICS, BATTLE, GROUP, AIR, FLOW, DEBUG, HITFX } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
@@ -144,6 +144,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
     onDestroy() {
         Health.activeInBattle = false;   // 離開戰鬥場景 → 關閉（商店等場景不顯示血條/不判傷）
+        HitFeedback.onTrigger = null;    // 清掉 static hook，避免殘留指向已銷毀的實例
         if (this.net) this.net.unbindEvents();
         cc.systemEvent.off("ONLINE_ROUND_RESULT", this.onRoundResult, this);
         cc.systemEvent.off("ONLINE_OPPONENT_LEFT", this.onOpponentLeft, this);
@@ -296,9 +297,13 @@ export default class BattleManager extends cc.Component implements INetBattle {
             damage: this.bulletDamage,
             lifetime: this.bulletLifetime,
         });
-        // 線上 host：把槍口火光累積起來，隨快照同步給對手畫面
+        // 線上 host：把槍口火光與打擊火花累積起來，隨快照同步給對手畫面
         if (this.mode === "HOST") {
             this.weapons.onMuzzle = (pos, dir) => { if (this.net) this.net.recordMuzzle(pos, dir); };
+            // 只同步一般傷害火花；零件擊破等級（HITSTOP_DAMAGE）client 端會自己由 disjointPart 產生
+            HitFeedback.onTrigger = (pos, dmg) => {
+                if (this.net && dmg < HITFX.HITSTOP_DAMAGE) this.net.recordHit(pos, dmg / HITFX.HITSTOP_DAMAGE);
+            };
         }
 
         this.sentRoundOver = false;
