@@ -602,14 +602,14 @@
       "ctor": "Float64Array",
       "array": [
         0,
-        0,
+        -200,
         0,
         0,
         0,
         0,
         1,
-        1,
-        1,
+        2,
+        2,
         1
       ]
     },
@@ -647,7 +647,7 @@
       "__uuid__": "7bf296fd-4e47-4199-9ee4-cab5f8c777eb"
     },
     "_texture": null,
-    "_stopped": true,
+    "_stopped": false,
     "playOnLoad": true,
     "autoRemoveOnFinish": false,
     "totalParticles": 300,
@@ -760,15 +760,15 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        -480,
-        -320,
+        -40,
+        -200,
         0,
         0,
         0,
         0,
         1,
-        1,
-        1,
+        2,
+        2,
         1
       ]
     },
@@ -829,7 +829,7 @@
       "ctor": "Float64Array",
       "array": [
         0,
-        0,
+        200,
         0,
         0,
         0,
