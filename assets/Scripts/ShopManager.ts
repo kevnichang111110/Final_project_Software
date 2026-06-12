@@ -71,6 +71,9 @@ export default class ShopManager extends cc.Component {
         physics.enabled = true;
         physics.gravity = cc.v2(0, -960);
 
+        // 多人模式：每次回到商店都重置金錢，讓每回合雙方有相同的固定預算（公平）
+        if (OnlineRuntime.isOnline()) GameManager.gold = 200;
+
         this.updateGoldDisplay();
         this.updateScoreDisplay();
         this.checkSpecialRoundAnnouncement();

@@ -679,11 +679,14 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
     suddenDeathTick() {
         if (this.isGameOver || GameManager.isPaused) return;
+        // 多人模式雙方都是真人 → 扣血必須相同；單機維持玩家/Bot 不對稱（玩家略吃虧）
+        const p1Dot = BATTLE.PLAYER_CORE_DOT;
+        const p2Dot = this.mode === "LOCAL" ? BATTLE.BOT_CORE_DOT : BATTLE.PLAYER_CORE_DOT;
         if (this.playerCar && this.playerCar.coreHealth) {
-            this.playerCar.coreHealth.takeDamage(BATTLE.PLAYER_CORE_DOT);
+            this.playerCar.coreHealth.takeDamage(p1Dot);
         }
         if (this.botCar && this.botCar.coreHealth) {
-            this.botCar.coreHealth.takeDamage(BATTLE.BOT_CORE_DOT);
+            this.botCar.coreHealth.takeDamage(p2Dot);
         }
     }
 
