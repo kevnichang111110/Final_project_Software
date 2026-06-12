@@ -68,6 +68,9 @@ export default class Draggable extends cc.Component {
         }
 
         this.node.setSiblingIndex(this.node.parent.childrenCount - 1);
+
+        // 零件被移除後，檢查是否有零件斷連並掉落
+        this.scheduleOnce(() => this.checkAndDisconnectFloatingParts(), 0);
     }
 
     onDragMove(event: cc.Event.EventTouch) {
@@ -109,20 +112,126 @@ export default class Draggable extends cc.Component {
             this.node.angle = 0;
 
             if (this.rb) this.rb.type = cc.RigidBodyType.Static;
+
+            // 放置後檢查連接性（可能有其他零件因此斷連）
+            this.scheduleOnce(() => this.checkAndDisconnectFloatingParts(), 0);
         } else {
             this.handleFailedDrop();
         }
     }
 
     // ---- 放置規則 ----
-    // 武器、輪子必須鄰接一個 Body/Core 才能放；Body、Core 只要格子空著即可。
+    // 武器、輪子必須鄰接一個 Body/Core 才能放；Body、Core 必須與核心有路徑相連。
     private canPlaceAt(gx: number, gy: number): boolean {
         if (gx < 0 || gx >= GRID.COUNT || gy < 0 || gy >= GRID.COUNT) return false;
         if (this.isGridOccupied(gx, gy)) return false;
         if (this.partType === PartType.Weapon || this.partType === PartType.Wheel) {
             if (!this.hasAdjacentBody(gx, gy)) return false;
         }
+        if (this.partType === PartType.Body || this.partType === PartType.Core) {
+            if (!this.wouldBeConnectedToCore(gx, gy)) return false;
+        }
         return true;
+    }
+
+    // 用 BFS 檢查提議的 (gx, gy) 位置是否能連接到 Core
+    private wouldBeConnectedToCore(gx: number, gy: number): boolean {
+        const coreNode = this.findCoreInPartsLayer();
+        if (!coreNode) return false;
+
+        const coreGx = Math.floor(coreNode.x / GRID.CELL_SIZE);
+        const coreGy = Math.floor(coreNode.y / GRID.CELL_SIZE);
+
+        const visited = new Set<string>();
+        const queue: [number, number][] = [[coreGx, coreGy]];
+        visited.add(`${coreGx},${coreGy}`);
+
+        const proposedKey = `${gx},${gy}`;
+
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift()!;
+            if (cx === gx && cy === gy) return true;
+
+            const neighbors: [number, number][] = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+            for (const [nx, ny] of neighbors) {
+                const key = `${nx},${ny}`;
+                if (visited.has(key)) continue;
+                if (nx < 0 || nx >= GRID.COUNT || ny < 0 || ny >= GRID.COUNT) continue;
+
+                const isOccupied = this.isGridOccupied(nx, ny) || key === proposedKey;
+                if (isOccupied) {
+                    visited.add(key);
+                    queue.push([nx, ny]);
+                }
+            }
+        }
+        return false;
+    }
+
+    // 找到 Core 零件節點
+    private findCoreInPartsLayer(): cc.Node | null {
+        if (!this.partsLayer) return null;
+        for (const p of this.partsLayer.children) {
+            if (p.name === "placeHint") continue;
+            if (this.isCorePart() && p === this.node) continue;
+            if (this.isCorePartByNode(p)) return p;
+            const d = p.getComponent(Draggable);
+            if (d && d.partType === PartType.Core) return p;
+            if (cleanName(p.name) === "core") return p;
+        }
+        return null;
+    }
+
+    private isCorePartByNode(node: cc.Node): boolean {
+        return cleanName(node.name) === "core";
+    }
+
+    // 檢查所有零件是否連接到 Core，斷開的讓它掉落
+    private checkAndDisconnectFloatingParts() {
+        if (!this.partsLayer) return;
+        const coreNode = this.findCoreInPartsLayer();
+        if (!coreNode) return;
+
+        const coreGx = Math.floor(coreNode.x / GRID.CELL_SIZE);
+        const coreGy = Math.floor(coreNode.y / GRID.CELL_SIZE);
+
+        const visited = new Set<string>();
+        const queue: [number, number][] = [[coreGx, coreGy]];
+        visited.add(`${coreGx},${coreGy}`);
+
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift()!;
+            const neighbors: [number, number][] = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+            for (const [nx, ny] of neighbors) {
+                const key = `${nx},${ny}`;
+                if (visited.has(key)) continue;
+                if (nx < 0 || nx >= GRID.COUNT || ny < 0 || ny >= GRID.COUNT) continue;
+                if (!this.isGridOccupied(nx, ny)) continue;
+                visited.add(key);
+                queue.push([nx, ny]);
+            }
+        }
+
+        for (const p of this.partsLayer.children) {
+            if (p.name === "placeHint") continue;
+            if (p === coreNode) continue;
+            const pgx = Math.floor(p.x / GRID.CELL_SIZE);
+            const pgy = Math.floor(p.y / GRID.CELL_SIZE);
+            if (!visited.has(`${pgx},${pgy}`)) {
+                this.makePartFall(p);
+            }
+        }
+    }
+
+    private makePartFall(partNode: cc.Node) {
+        const rb = partNode.getComponent(cc.RigidBody);
+        if (rb) {
+            partNode.group = "default";
+            (partNode.getComponents(cc.PhysicsCollider) as cc.PhysicsCollider[])
+                .forEach(c => c.apply());
+            rb.type = cc.RigidBodyType.Dynamic;
+            rb.awake = true;
+        }
     }
 
     private hasAdjacentBody(gx: number, gy: number): boolean {
@@ -226,7 +335,7 @@ export default class Draggable extends cc.Component {
         if (!this.partsLayer) return false;
 
         for (let p of this.partsLayer.children) {
-            if (p === this.node) continue;
+            if (p === this.node) continue;  // 忽略正在拖動的節點
             if (p.name === "placeHint") continue;   // 提示框不算零件，避免誤判格子被佔用
             let pgx = Math.floor(p.x / GRID.CELL_SIZE);
             let pgy = Math.floor(p.y / GRID.CELL_SIZE);
