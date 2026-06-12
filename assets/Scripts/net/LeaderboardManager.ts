@@ -56,9 +56,14 @@ export default class LeaderboardManager extends cc.Component {
                 node.parent = this.content;
                 this.setChildLabel(node, "rank", `${i + 1}`);
                 this.setChildLabel(node, "name", r.name);
-                this.setChildLabel(node, "wins", `${r.wins}`);
-                this.setChildLabel(node, "score", `${r.bestScore}`);
                 
+                // 【修改 1】原本塞 wins 的地方，改成顯示「當前連勝」
+                this.setChildLabel(node, "wins", `連勝: ${r.currentStreak}`);
+                
+                // 【修改 2】原本塞 bestScore 的地方，改成顯示「勝率與最高連勝」
+                this.setChildLabel(node, "score", `${r.winRate}% (最高${r.maxStreak}連勝)`);
+                
+                // 頭像處理邏輯維持不變
                 const avatarNode = node.getChildByName("avatar");
                 if (avatarNode && this.avatarFrames.length > 0) {
                     const sprite = avatarNode.getComponent(cc.Sprite);
@@ -69,11 +74,13 @@ export default class LeaderboardManager extends cc.Component {
             });
             return;
         }
+
+        // 【修改 3】如果有使用 fallbackLabel (純文字版排行榜)，也要一併更新排版格式
         if (this.fallbackLabel) {
             if (!rows.length) { this.fallbackLabel.string = "目前還沒有紀錄"; return; }
-            let s = "排行榜（勝場）\n";
+            let s = "🏆 勝率排行榜 🏆\n";
             rows.forEach((r, i) => {
-                s += `${i + 1}. ${r.name}　勝 ${r.wins}　分 ${r.bestScore}\n`;
+                s += `${i + 1}. ${r.name} 勝率 ${r.winRate}% 最高連勝 ${r.maxStreak}\n`;
             });
             this.fallbackLabel.string = s;
         }
