@@ -31,7 +31,8 @@ export default class OnlineRuntime {
     public static round: number = 1;
     public static seed: number = 0;
 
-    public static onlineGameSceneName: string = "onlinegame";
+    // Phase 1：線上對戰改用統一的本地戰鬥場景 game.fire（同一個 BattleManager 依房間自動切 HOST/CLIENT）
+    public static onlineGameSceneName: string = "game";
     public static shopSceneName: string = "onlineShop";
     public static menuSceneName: string = "Menu";
 
