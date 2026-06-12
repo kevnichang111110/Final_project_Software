@@ -5,6 +5,7 @@
 
 import Bullet from "../Bullet";
 import NodePool from "../core/NodePool";
+import MuzzleFlash from "../fx/MuzzleFlash";
 import { GROUP } from "../core/GameConstants";
 
 // 子彈池：module-level singleton，跨回合 / 跨場景存活（回收的節點已脫離場景樹，換場景不被銷毀）。
@@ -117,6 +118,10 @@ export default class WeaponSystem {
             comp.recycler = recycleBullet;   // 命中/逾時時收回池子而非 destroy
             comp.arm();                       // 重置 hasExploded + 重新開始存活倒數
         }
+
+        // 槍口火光（玩家與 Bot 共用此路徑；發射冷卻已節流，每發一閃）。
+        // 掛在 container（BattleManager.node）→ 武器被銷毀後特效仍在。
+        MuzzleFlash.spawn(this.container, worldPos, dir);
         return bullet;
     }
 }
