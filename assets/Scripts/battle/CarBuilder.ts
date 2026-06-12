@@ -228,8 +228,14 @@ export default class CarBuilder {
         }
     }
 
+    private static isCheckingDisconnection = false;
+
     // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀
     static disjointPart(node: cc.Node) {
+        if (!node || !node.isValid) return;
+        const partGroup = node.group;
+        if (partGroup === GROUP.DEFAULT) return;
+
         // 在零件原本位置炸一下（特效掛在父層，零件之後被銷毀也不影響）
         const parent = node.parent;
         if (parent) {
@@ -256,5 +262,74 @@ export default class CarBuilder {
             .delay(0.02)
             .call(() => { if (node.isValid) node.destroy(); })
             .start();
+
+        // 檢查其它已斷開的部件並將它們爆破
+        if (parent && partGroup !== GROUP.DEFAULT) {
+            CarBuilder.checkDisconnectedParts(parent, partGroup);
+        }
+    }
+
+    private static checkDisconnectedParts(root: cc.Node, partGroup: string) {
+        if (CarBuilder.isCheckingDisconnection) return;
+        CarBuilder.isCheckingDisconnection = true;
+
+        try {
+            // 找出核心節點
+            let coreNode: cc.Node | null = null;
+            for (const child of root.children) {
+                if (child.isValid && child.group === partGroup && isCoreNode(child)) {
+                    coreNode = child;
+                    break;
+                }
+            }
+
+            const activeNodes = root.children.filter(c => c.isValid && c.group === partGroup);
+            if (activeNodes.length === 0) return;
+
+            const adj = new Map<cc.Node, Set<cc.Node>>();
+            activeNodes.forEach(n => adj.set(n, new Set()));
+
+            const joints = root.getComponentsInChildren(cc.Joint);
+            for (const j of joints) {
+                if (!j.isValid) continue;
+                const nodeA = j.node;
+                const nodeB = j.connectedBody ? j.connectedBody.node : null;
+                if (nodeA && nodeB && nodeA.isValid && nodeB.isValid) {
+                    if (adj.has(nodeA) && adj.has(nodeB)) {
+                        adj.get(nodeA)!.add(nodeB);
+                        adj.get(nodeB)!.add(nodeA);
+                    }
+                }
+            }
+
+            const visited = new Set<cc.Node>();
+            const queue: cc.Node[] = [];
+            if (coreNode) {
+                queue.push(coreNode);
+                visited.add(coreNode);
+            }
+
+            while (queue.length > 0) {
+                const curr = queue.shift()!;
+                const neighbors = adj.get(curr);
+                if (neighbors) {
+                    for (const next of neighbors) {
+                        if (!visited.has(next)) {
+                            visited.add(next);
+                            queue.push(next);
+                        }
+                    }
+                }
+            }
+
+            // 把所有無法連回核心的零件爆破
+            activeNodes.forEach(n => {
+                if (!visited.has(n)) {
+                    CarBuilder.disjointPart(n);
+                }
+            });
+        } finally {
+            CarBuilder.isCheckingDisconnection = false;
+        }
     }
 }
