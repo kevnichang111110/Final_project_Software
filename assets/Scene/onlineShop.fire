@@ -5695,7 +5695,7 @@
     "component": "",
     "_componentId": "855dbWbUTpFg62VBViDZzLT",
     "handler": "onBuyButtonClick",
-    "customEventData": "1"
+    "customEventData": "0"
   },
   {
     "__type__": "cc.Node",
@@ -6570,7 +6570,7 @@
     "component": "",
     "_componentId": "855dbWbUTpFg62VBViDZzLT",
     "handler": "onBuyButtonClick",
-    "customEventData": "2"
+    "customEventData": "0"
   },
   {
     "__type__": "cc.Canvas",
