@@ -148,7 +148,7 @@ export const SCRAMBLE = {
     GROUND_Y: -300,        // 地面高度（場景中心為原點）
     ARENA_WIDTH: 1200,
     BOT_JUMP_DY: 50,       // Bot 目標箱子高出這麼多就跳
-    AFTER_SCENE: "Shop",   // 搶奪結束後前往的場景
+    AFTER_SCENE: "onlineShop",   // 搶奪結束後前往的場景（單機與連線共用同一商店場景）
 };
 
 // 回合流程

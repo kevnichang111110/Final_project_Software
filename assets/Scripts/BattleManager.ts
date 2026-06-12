@@ -458,7 +458,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (this.mode === "CLIENT") {
             this.sendTimer += dt;
             if (this.sendTimer >= 0.05) { this.sendTimer = 0; if (this.net) this.net.sendInput(this.localInput); }
-            if (this.net) this.net.updateHud(this.isBattleStarted);
             return;
         }
 
@@ -471,7 +470,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (!this.isBattleStarted) {
             this.updateCountdown(dt);
             if (this.mode === "HOST") this.broadcastIfHost(dt);   // 倒數期間也廣播，讓 client 鏡像
-            if (this.net) this.net.updateHud(this.isBattleStarted);
             return;
         }
 
@@ -495,7 +493,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
         }
 
         this.updateDebugDraw();
-        if (this.net) this.net.updateHud(this.isBattleStarted);
     }
 
     private broadcastIfHost(dt: number) {
@@ -767,7 +764,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
             || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
 
-        let target = "Shop";
+        let target = "onlineShop";   // 單機與連線共用同一個商店場景
         if (finished) {
             if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
                 // 玩家贏得整場 → 記錄到 Firebase（未登入 / 未設定時為安全的 no-op）

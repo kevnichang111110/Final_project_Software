@@ -40,10 +40,7 @@ export default class BattleNetSync {
     // t=0 槍口火光（a=方向弧度）；t=1 打擊火花（a=強度 0~1）
     private pendingFx: { t: number, x: number, y: number, a: number }[] = [];
 
-    // 診斷
-    private debugLabel: cc.Label | null = null;
-    private txCount = 0;
-    private rxCount = 0;
+    // 安全檢查：偵測到第二個主機（伺服器把兩台都配成 P1）時只警告一次
     private hostConflict = false;
 
     constructor(bm: INetBattle) {
@@ -54,7 +51,6 @@ export default class BattleNetSync {
     bindEvents() {
         cc.systemEvent.on("ONLINE_REMOTE_INPUT", this.onRemoteInput, this);
         cc.systemEvent.on("ONLINE_SYNC_POS", this.onSyncReceived, this);
-        this.createDebugHud();
     }
     unbindEvents() {
         cc.systemEvent.off("ONLINE_REMOTE_INPUT", this.onRemoteInput, this);
@@ -100,7 +96,6 @@ export default class BattleNetSync {
             fx: this.drainFx(),
         };
         OnlineRuntime.room.send("sync", snapshot);
-        this.txCount++;
     }
 
     registerDebris(node: cc.Node, prefabIndex: number) {
@@ -161,10 +156,12 @@ export default class BattleNetSync {
         if (!msg) return;
         if (OnlineRuntime.isHost()) {
             // 自己是 host 卻收到 sync → 場上有第二個主機（多半是伺服器把兩台都配成 P1）
-            this.hostConflict = true;
+            if (!this.hostConflict) {
+                this.hostConflict = true;
+                cc.error("[Online] 偵測到第二個主機：伺服器可能把兩台都配成 P1，請檢查 onJoin 的 seat 配位");
+            }
             return;
         }
-        this.rxCount++;
         this.applyMeta(msg.meta);
         if (msg.cars) {
             this.applyCarParts(this.bm.getP1Car(), msg.cars.p1);
@@ -275,34 +272,5 @@ export default class BattleNetSync {
             const n = nodes[i], d = list[i];
             if (n && n.isValid && d) { n.setPosition(d.x, d.y); n.angle = d.a; }
         }
-    }
-
-    // ---- 診斷 HUD ----
-    private createDebugHud() {
-        const canvas = cc.find("Canvas");
-        if (!canvas) return;
-        const node = new cc.Node("DEBUG_HUD");
-        node.parent = canvas; node.zIndex = 200;
-        const label = node.addComponent(cc.Label);
-        label.fontSize = 24; label.lineHeight = 28;
-        label.horizontalAlign = cc.Label.HorizontalAlign.CENTER;
-        const widget = node.addComponent(cc.Widget);
-        widget.isAlignTop = true; widget.top = 70;
-        widget.isAlignHorizontalCenter = true;
-        widget.updateAlignment();
-        this.debugLabel = label;
-    }
-    updateHud(started: boolean) {
-        if (!this.debugLabel) return;
-        const host = OnlineRuntime.isHost();
-        if (this.hostConflict) {
-            this.debugLabel.string = "CONFLICT: 2 HOSTS! (seat 兩台都 P1?)";
-            this.debugLabel.node.color = cc.Color.RED;
-            return;
-        }
-        this.debugLabel.node.color = host ? cc.color(120, 255, 120) : cc.color(255, 220, 120);
-        this.debugLabel.string = host
-            ? `SEAT=${OnlineRuntime.mySeat} HOST=Y started=${started ? "Y" : "N"} tx=${this.txCount}`
-            : `SEAT=${OnlineRuntime.mySeat} HOST=N started=${this.p2ShownFight ? "Y" : "N"} rx=${this.rxCount}`;
     }
 }

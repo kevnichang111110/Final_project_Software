@@ -135,13 +135,7 @@ export default class OnlineClient extends cc.Component {
 
         // 轉發主機（P1）的世界狀態快照給純畫面端（P2）
         // 注意：伺服器端必須有對應的 onMessage("sync", ...) 把它廣播給對手，否則收不到
-        // 診斷用：確認 P2 確實收到快照；若完全沒印出代表伺服器未轉發 sync，確認穩定後可移除
-        let syncLogCount = 0;
         room.onMessage("sync", (msg: any) => {
-            if (syncLogCount < 5 || syncLogCount % 60 === 0) {
-                cc.log("[Online] 收到 sync 快照 #" + syncLogCount);
-            }
-            syncLogCount++;
             cc.systemEvent.emit("ONLINE_SYNC_POS", msg);
         });
 
