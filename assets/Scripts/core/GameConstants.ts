@@ -158,8 +158,8 @@ export const SCRAMBLE = {
 export const FLOW = {
     USE_SCRAMBLE: false,       // 設 false 可暫時關閉搶奪階段（還沒建好 Scramble 場景時）
     SCRAMBLE_SCENE: "Scramble",
-    USE_WALLRIDE: true,       // 牆面行駛：開啟才爬得了牆（關閉時玩家碰到牆只會滑下來）
-    USE_STUCK_RESCUE: true,   // 卡住自救：車子想動卻動不了一段時間後，自動瞬移到最近可站的位置
+    USE_WALLRIDE: false,       // 牆面行駛：開啟才爬得了牆（關閉時玩家碰到牆只會滑下來）
+    USE_STUCK_RESCUE: false,   // 卡住自救：車子想動卻動不了一段時間後，自動瞬移到最近可站的位置
 };
 
 // 卡住自救（StuckRescue）
