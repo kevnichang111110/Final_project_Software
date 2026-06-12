@@ -784,24 +784,23 @@ export default class BattleManager extends cc.Component implements INetBattle {
         this.scheduleOnce(() => this.goToNextScene(), 3);
     }
 
-    private goToNextScene() {
+   private goToNextScene() {
         const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
             || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
 
-        let target = "onlineShop";   // 單機與連線共用同一個商店場景
+        let target = "Shop";
         if (finished) {
-            if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
-                // 玩家贏得整場 → 記錄到 Firebase（未登入 / 未設定時為安全的 no-op）
-                FirebaseService.incrementWins();
-                FirebaseService.submitBestScore(GameManager.playerWins);
-            }
-            GameManager.resetAllData();
-            target = "Menu";
-        } else if (FLOW && FLOW.USE_SCRAMBLE) {   // FLOW 防呆：未定義時直接走商店，不讓它丟例外卡住
+            // 注意：Firebase 寫入的邏輯我們已經移到 ResultManager 去做了，這裡可以刪掉原本的 incrementWins
+            
+            // 【修改這裡】比賽結束，不要回 Menu，改去結算場景
+            target = "Result"; 
+            
+            // 注意：不要在這裡呼叫 GameManager.resetAllData()，不然結算畫面會抓不到玩家車子的資料，把重置留在 ResultScene 的返回按鈕裡。
+        } else if (FLOW && FLOW.USE_SCRAMBLE) { 
             target = FLOW.SCRAMBLE_SCENE;
         }
 
-        cc.log(`[BattleManager] 回合結束 → 載入「${target}」 (P:${GameManager.playerWins}/B:${GameManager.botWins}, USE_SCRAMBLE=${FLOW ? FLOW.USE_SCRAMBLE : "undefined"})`);
+        cc.log(`[BattleManager] 回合結束 → 載入「${target}」`);
         cc.director.loadScene(target);
     }
 
