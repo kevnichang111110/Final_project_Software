@@ -116,13 +116,56 @@ export default class Draggable extends cc.Component {
 
     // ---- 放置規則 ----
     // 武器、輪子必須鄰接一個 Body/Core 才能放；Body、Core 只要格子空著即可。
+    // ---- 放置規則 ----
     private canPlaceAt(gx: number, gy: number): boolean {
+        // 1. 檢查是否超出邊界
         if (gx < 0 || gx >= GRID.COUNT || gy < 0 || gy >= GRID.COUNT) return false;
+        
+        // 2. 檢查格子是否被佔用
         if (this.isGridOccupied(gx, gy)) return false;
-        if (this.partType === PartType.Weapon || this.partType === PartType.Wheel) {
-            if (!this.hasAdjacentBody(gx, gy)) return false;
+
+        // 3. 檢查場上是否已經有其他零件
+        let hasOtherParts = false;
+        if (this.partsLayer) {
+            for (let p of this.partsLayer.children) {
+                // 排除自己與提示框
+                if (p !== this.node && p.name !== "placeHint") {
+                    hasOtherParts = true;
+                    break;
+                }
+            }
         }
+
+        // 如果場上空無一物，第一塊放哪都可以（通常是 Core）
+        if (!hasOtherParts) return true;
+
+        // 4. 連接規則
+        if (this.partType === PartType.Weapon || this.partType === PartType.Wheel) {
+            // 武器和輪子：必須貼著 Body 或 Core (維持你原本的嚴格規則)
+            if (!this.hasAdjacentBody(gx, gy)) return false;
+        } else {
+            // Body 或 Core：必須跟現有的「任何」方塊相鄰，不能憑空放置
+            if (!this.hasAnyAdjacentPart(gx, gy)) return false;
+        }
+
         return true;
+    }
+
+    // 檢查上下左右是否有「任何」合法的方塊
+    private hasAnyAdjacentPart(gx: number, gy: number): boolean {
+        if (!this.partsLayer) return false;
+        for (let p of this.partsLayer.children) {
+            if (p === this.node || p.name === "placeHint") continue;
+            let pgx = Math.floor(p.x / GRID.CELL_SIZE);
+            let pgy = Math.floor(p.y / GRID.CELL_SIZE);
+            let dx = Math.abs(pgx - gx);
+            let dy = Math.abs(pgy - gy);
+            // 判斷是否為上下左右相鄰 (距離為 1)
+            if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private hasAdjacentBody(gx: number, gy: number): boolean {
@@ -233,5 +276,17 @@ export default class Draggable extends cc.Component {
             if (pgx === gx && pgy === gy) return true;
         }
         return false;
+    }
+
+    onTouchStart(event: cc.Event.EventTouch) {
+        // 加入這段：通知 ShopManager，我把這個方塊拔起來了，請檢查其他方塊有沒有因此斷開！
+        let shopNode = cc.find("Canvas/ShopManager");
+        if (shopNode) {
+            let shopManager = shopNode.getComponent("ShopManager");
+            if (shopManager && typeof shopManager.checkAndDropUnconnectedParts === "function") {
+                // 傳入 this.node，請演算法掃描時當作我已經不在了
+                shopManager.checkAndDropUnconnectedParts(this.node);
+            }
+        }
     }
 }
