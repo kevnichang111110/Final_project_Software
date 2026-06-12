@@ -4,6 +4,7 @@ import WeaponSystem from "../battle/WeaponSystem";
 import MapLoader from "../map/MapLoader"; // 請確認你的路徑
 import MouseCannon from "../weapons/MouseCannon";
 import Health from "../HealthManager";
+import Bullet from "../Bullet";
 import OnlineRuntime, { OnlineInputState, OnlineSeat } from "./OnlineRuntime";
 
 const { ccclass, property } = cc._decorator;
@@ -61,6 +62,13 @@ export default class OnlineBattleManager extends cc.Component {
     private p1ScoreLabel: cc.Label | null = null;
     private p2ScoreLabel: cc.Label | null = null;
 
+    // ===== 純畫面端（P2）渲染用 =====
+    // 視覺實體池：key = prefab 識別（-1 代表子彈 bulletPrefab，>=0 代表 allPrefabs 索引）
+    private visualPools: Map<number, cc.Node[]> = new Map();
+    // 主機端追蹤的驟死掉落物（節點 + allPrefabs 索引），供序列化用
+    private debrisNodes: { node: cc.Node, p: number }[] = [];
+    private p2ShownFight: boolean = false;
+
     onLoad() {
         // 1. 告訴引擎：失去焦點時不要自動暫停
         (cc.game as any).pauseOnBlur = false;
@@ -79,7 +87,8 @@ export default class OnlineBattleManager extends cc.Component {
             return;
         }
 
-        Health.activeInBattle = true;
+        // 只有主機跑傷害判定；P2 是純畫面端，關掉傷害（否則兩端各自扣血會分歧）
+        Health.activeInBattle = OnlineRuntime.isHost();
         const physics = cc.director.getPhysicsManager();
         physics.enabled = true;
         (physics as any).enabledContactListener = true;
@@ -214,34 +223,32 @@ export default class OnlineBattleManager extends cc.Component {
     update(dt: number) {
         if (this.isGameOver) return;
 
-        // 1. 同步我的輸入 (20 FPS)
+        // 兩端都要送出自己的輸入（P2 的輸入要交給主機模擬）
         this.sendTimer += dt;
         if (this.sendTimer >= 0.05) {
             this.sendTimer = 0;
             this.sendMyInput();
         }
 
-        // 2. 處理倒數計時 (兩邊都會跑)
+        // 非主機（P2）= 純畫面端：本地不跑任何物理/邏輯，畫面全由 onSyncReceived 驅動
+        if (!OnlineRuntime.isHost()) return;
+
+        // ===== 以下只有主機（P1）會跑 =====
         if (!this.isBattleStarted) {
             this.updateCountdown(dt);
-            return;
+        } else {
+            this.updateMatchTimer(dt);
+            this.updateCooldowns(dt);
+            this.applyCarControl(this.p1Car, this.p1Input, "PLAYER", 1, dt);
+            this.applyCarControl(this.p2Car, this.p2Input, "BOT", 2, dt);
         }
 
-        // 3. 主機判定邏輯
-        this.updateMatchTimer(dt);
-
-        // 4. 【核心修正】主機同步邏輯：只有主機發送位置快照
-        if (OnlineRuntime.isHost()) {
-            this.syncTimer += dt;
-            if (this.syncTimer >= 0.1) {
-                this.syncTimer = 0;
-                this.sendStateSync();
-            }
+        // 主機每 50ms 送一份完整世界快照（倒數期間也送，讓 P2 鏡像倒數與靜止車）
+        this.syncTimer += dt;
+        if (this.syncTimer >= 0.05) {
+            this.syncTimer = 0;
+            this.sendStateSync();
         }
-
-        this.updateCooldowns(dt);
-        this.applyCarControl(this.p1Car, this.p1Input, "PLAYER", 1, dt);
-        this.applyCarControl(this.p2Car, this.p2Input, "BOT", 2, dt);
     }
 
     private updateCooldowns(dt: number) {
@@ -302,8 +309,11 @@ export default class OnlineBattleManager extends cc.Component {
             this.suddenDeathLabel.node.active = true;
             cc.tween(this.suddenDeathLabel.node).repeatForever(cc.tween().to(0.5, { opacity: 0 }).to(0.5, { opacity: 255 })).start();
         }
-        this.schedule(this.suddenDeathTick, BATTLE.SUDDEN_DEATH_TICK);
-        this.schedule(this.spawnSuddenDeathPart, 0.5);
+        // 扣血與亂數生成掉落物只在主機跑；P2 的驟死 UI 由本方法處理，掉落物由快照鏡像
+        if (OnlineRuntime.isHost()) {
+            this.schedule(this.suddenDeathTick, BATTLE.SUDDEN_DEATH_TICK);
+            this.schedule(this.spawnSuddenDeathPart, 0.5);
+        }
     }
 
     private suddenDeathTick() {
@@ -314,7 +324,8 @@ export default class OnlineBattleManager extends cc.Component {
 
     private spawnSuddenDeathPart() {
         if (this.isGameOver || this.allPrefabs.length === 0) return;
-        const prefab = this.allPrefabs[Math.floor(Math.random() * this.allPrefabs.length)];
+        const prefabIndex = Math.floor(Math.random() * this.allPrefabs.length);
+        const prefab = this.allPrefabs[prefabIndex];
         if (!prefab) return;
         const node = cc.instantiate(prefab);
         node.parent = this.node;
@@ -324,51 +335,169 @@ export default class OnlineBattleManager extends cc.Component {
             rb.type = cc.RigidBodyType.Dynamic;
             rb.linearVelocity = cc.v2(0, -400);
         }
-        this.scheduleOnce(() => { if (node.isValid) node.destroy(); }, 3);
+        // 記錄供快照序列化（讓 P2 鏡像掉落物）
+        const entry = { node, p: prefabIndex };
+        this.debrisNodes.push(entry);
+        this.scheduleOnce(() => {
+            if (node.isValid) node.destroy();
+            const i = this.debrisNodes.indexOf(entry);
+            if (i >= 0) this.debrisNodes.splice(i, 1);
+        }, 3);
     }
 
     // ===== 核心同步方法 =====
 
+    // ---- 主機端：送出完整世界快照 ----
+
     private sendStateSync() {
-        if (!this.p1Car || !this.p1Car.coreNode || !this.p1Car.coreNode.isValid ||
-            !this.p2Car || !this.p2Car.coreNode || !this.p2Car.coreNode.isValid) {
-            return;
-        }
-        // P1 主機發送快照
+        if (!OnlineRuntime.room) return;
         const snapshot = {
-            p1: this.getCarSnapshot(this.p1Car),
-            p2: this.getCarSnapshot(this.p2Car)
+            meta: {
+                started: this.isBattleStarted,
+                countdown: this.countdownValue,
+                timer: this.matchTimer
+            },
+            cars: {
+                p1: this.serializeCar(this.p1Car),
+                p2: this.serializeCar(this.p2Car)
+            },
+            bullets: this.collectBullets(),
+            debris: this.collectDebris()
         };
         OnlineRuntime.room.send("sync", snapshot);
     }
 
-    private getCarSnapshot(car: BuiltCar) {
-        if (!car || !car.coreNode) return null;
-        const rb = car.coreNode.getComponent(cc.RigidBody);
-        return {
-            x: car.coreNode.x,
-            y: car.coreNode.y,
-            angle: car.coreNode.angle,
-            vx: rb ? rb.linearVelocity.x : 0,
-            vy: rb ? rb.linearVelocity.y : 0
-        };
+    // 逐零件序列化：以 partsMap 的 grid key 標識，傳相對 root 的本地座標（兩端 root 佈局相同）
+    private serializeCar(car: BuiltCar | null): any[] {
+        const out: any[] = [];
+        if (!car || !car.partsMap) return out;
+        car.partsMap.forEach((node, key) => {
+            if (!node || !node.isValid) return;
+            out.push({ k: key, x: node.x, y: node.y, a: node.angle });
+        });
+        return out;
     }
 
+    // 列舉主機目前存活的子彈（掛在 this.node 下、帶 Bullet 元件、未爆）
+    private collectBullets(): any[] {
+        const out: any[] = [];
+        if (!this.node) return out;
+        this.node.children.forEach(c => {
+            if (!c || !c.isValid || !c.active) return;
+            const b = c.getComponent(Bullet);
+            if (b && !b.hasExploded) out.push({ x: c.x, y: c.y, a: c.angle });
+        });
+        return out;
+    }
+
+    private collectDebris(): any[] {
+        const out: any[] = [];
+        for (const d of this.debrisNodes) {
+            if (d.node && d.node.isValid) out.push({ p: d.p, x: d.node.x, y: d.node.y, a: d.node.angle });
+        }
+        return out;
+    }
+
+    // ---- 純畫面端（P2）：套用主機快照 ----
+
     private onSyncReceived(msg: any) {
-        if (OnlineRuntime.mySeat === "P2") {
-            this.applySyncToCar(this.p1Car, msg.p1);
-            this.applySyncToCar(this.p2Car, msg.p2);
+        if (OnlineRuntime.isHost() || !msg) return; // 主機自己不套用快照
+        this.applyMeta(msg.meta);
+        if (msg.cars) {
+            this.applyCarParts(this.p1Car, msg.cars.p1);
+            this.applyCarParts(this.p2Car, msg.cars.p2);
+        }
+        this.reconcileVisualBullets(msg.bullets || []);
+        this.reconcileVisualDebris(msg.debris || []);
+    }
+
+    private applyMeta(meta: any) {
+        if (!meta) return;
+        if (!meta.started) {
+            if (this.countdownLabel) {
+                this.countdownLabel.node.active = true;
+                this.countdownLabel.string = String(meta.countdown);
+            }
+        } else if (!this.p2ShownFight) {
+            this.p2ShownFight = true;
+            this.isBattleStarted = true;
+            if (this.countdownLabel) {
+                this.countdownLabel.string = "FIGHT!";
+                this.scheduleOnce(() => { if (this.countdownLabel) this.countdownLabel.node.active = false; }, 1);
+            }
+        }
+        if (this.timerLabel && meta.timer != null) {
+            this.timerLabel.string = String(Math.max(0, Math.ceil(meta.timer)));
         }
     }
 
-    private applySyncToCar(car: BuiltCar | null, data: any) {
-        if (!car || !car.coreNode || !data) return;
-        const rb = car.coreNode.getComponent(cc.RigidBody);
-        if (!rb) return;
-        car.coreNode.setPosition(data.x, data.y);
-        car.coreNode.angle = data.angle;
-        rb.linearVelocity = cc.v2(data.vx, data.vy);
-        rb.awake = true;
+    private applyCarParts(car: BuiltCar | null, list: any[]) {
+        if (!car || !car.partsMap || !list) return;
+        const present = new Set<string>();
+        for (const p of list) {
+            present.add(p.k);
+            const node = car.partsMap.get(p.k);
+            if (node && node.isValid) {
+                node.setPosition(p.x, p.y);
+                node.angle = p.a;
+            }
+        }
+        // 主機已銷毀（快照中沒有）的零件 → 在 P2 同步斷開銷毀（沿用 disjointPart 以正確切斷鄰接關節並播爆炸特效）
+        car.partsMap.forEach((node, key) => {
+            if (node && node.isValid && !present.has(key)) CarBuilder.disjointPart(node);
+        });
+    }
+
+    private reconcileVisualBullets(list: any[]) {
+        this.reconcileVisual(-1, this.bulletPrefab, list);
+    }
+
+    private reconcileVisualDebris(list: any[]) {
+        const groups: Map<number, any[]> = new Map();
+        for (const d of list) {
+            if (!groups.has(d.p)) groups.set(d.p, []);
+            groups.get(d.p)!.push(d);
+        }
+        groups.forEach((items, p) => {
+            this.reconcileVisual(p, this.allPrefabs[p] || null, items);
+        });
+        // 本幀沒出現的 debris prefab 池全部隱藏
+        this.visualPools.forEach((pool, key) => {
+            if (key >= 0 && !groups.has(key)) {
+                for (const n of pool) if (n && n.isValid) n.active = false;
+            }
+        });
+    }
+
+    // 視覺實體無序對位：池子數量對齊 list，逐一定位，多的隱藏
+    private reconcileVisual(key: number, prefab: cc.Prefab | null, items: any[]) {
+        if (!prefab) return;
+        let pool = this.visualPools.get(key);
+        if (!pool) { pool = []; this.visualPools.set(key, pool); }
+        while (pool.length < items.length) pool.push(this.makeVisual(prefab));
+        for (let i = 0; i < pool.length; i++) {
+            const n = pool[i];
+            if (!n || !n.isValid) continue;
+            if (i < items.length) {
+                n.active = true;
+                n.setPosition(items[i].x, items[i].y);
+                n.angle = items[i].a;
+            } else {
+                n.active = false;
+            }
+        }
+    }
+
+    // 建立純視覺節點：拿掉物理與子彈邏輯，避免自我銷毀或觸發碰撞
+    private makeVisual(prefab: cc.Prefab): cc.Node {
+        const n = cc.instantiate(prefab);
+        n.parent = this.node;
+        n.zIndex = 5;
+        const rb = n.getComponent(cc.RigidBody);
+        if (rb) rb.destroy();
+        const b = n.getComponent(Bullet);
+        if (b) b.destroy();
+        return n;
     }
 
     private sendMyInput() {
@@ -380,6 +509,7 @@ export default class OnlineBattleManager extends cc.Component {
 
     private onRemoteInput(msg: any) {
         if (!msg || !msg.seat || !msg.input) return;
+        if (msg.seat === OnlineRuntime.mySeat) return; // 忽略自己輸入的回音
         const input = this.normalizeInput(msg.input);
         if (msg.seat === "P1") this.p1Input = input;
         else this.p2Input = input;
