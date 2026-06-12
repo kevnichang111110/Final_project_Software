@@ -4,6 +4,7 @@
 //       （檔名/類別名/所有 @property 不變，編輯器綁定不受影響。）
 
 import GameManager, { GridPart } from "./GameManager";
+import OnlineRuntime from "./online/OnlineRuntime";
 import { PartType } from "./core/PartType";
 import { GRID } from "./core/GameConstants";
 import {
@@ -285,8 +286,23 @@ export default class ShopManager extends cc.Component {
     }
 
     updateScoreDisplay() {
-        if (this.scoreLabel) {
+        if (!this.scoreLabel) return;
+
+        // 檢查目前是否為線上模式
+        if (OnlineRuntime.isOnline()) {
+            // 線上模式：顯示 P1 vs P2
+            this.scoreLabel.string = `${OnlineRuntime.p1Name}-${OnlineRuntime.p1Wins} v.s. ${OnlineRuntime.p2Wins}-${OnlineRuntime.p2Name}`;
+            
+            // 選擇性：根據你是哪位玩家改變顏色，讓玩家更有帶入感
+            if (OnlineRuntime.mySeat === "P1") {
+                this.scoreLabel.node.color = cc.color(120, 200, 255); // 藍色 (P1)
+            } else {
+                this.scoreLabel.node.color = cc.color(255, 150, 90);  // 橘色 (P2)
+            }
+        } else {
+            // 單機模式：維持原本的 Player vs Bot
             this.scoreLabel.string = `PLAYER-${GameManager.playerWins} v.s. ${GameManager.botWins}-BOT`;
+            this.scoreLabel.node.color = cc.Color.WHITE;
         }
     }
 
@@ -413,6 +429,10 @@ export default class ShopManager extends cc.Component {
     }
 
     private getCurrentRound(): number {
+        if (OnlineRuntime.isOnline()) {
+            // 線上模式回傳目前是第幾局
+            return OnlineRuntime.p1Wins + OnlineRuntime.p2Wins;
+        }
         return GameManager.playerWins + GameManager.botWins;
     }
 

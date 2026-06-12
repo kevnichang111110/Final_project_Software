@@ -229,3 +229,21 @@ export const HITFX = {
     // 撞擊火花（HitSpark）
     SPARK_MIN_DAMAGE: 4,     // 低於此傷害不噴火花
 };
+
+// 輪子滾動揚塵（WheelDust）：輪子貼地且轉得夠快時，在輪下節流冒出淡淡塵土小煙。
+export const WHEELDUST = {
+    MIN_SPIN: 600,        // 輪子角速度門檻（度/秒），低於此值不揚塵（避免靜止/慢速時亂冒）
+    GROUND_PROBE: 6,      // 著地探測射線額外長度（同 AIR.GROUNDED_PROBE 風格）
+    EMIT_INTERVAL: 0.08,  // 兩次揚塵的最小間隔（節流，約 12 次/秒）
+};
+
+// 槍口火光（MuzzleFlash）：武器發射時在槍口閃一下 + 幾條前向火光，方向沿子彈飛行方向。
+export const MUZZLEFX = {
+    MAX_STREAKS: 4,       // 前向火光條數
+    FAN_DEG: 8,           // 火光條的扇形夾角（度）
+};
+
+// 加血方塊綠色溢光（HealGlow）：自我修復方塊回血中時，節流冒出綠色擴散光暈 + 上升綠點。
+export const HEALFX = {
+    EMIT_INTERVAL: 0.25,  // 回血中每隔多久冒一次綠光
+};
