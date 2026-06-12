@@ -12,7 +12,6 @@
 
 import { AIRPHYS, GROUP } from "../core/GameConstants";
 import { BuiltCar } from "./CarBuilder";
-import { isCoreNode } from "../core/PartUtils";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -123,55 +122,14 @@ export default class AirPhysics {
         return true;
     }
 
-    // 目前車上仍屬於本車且與核心相連的零件剛體
+    // 目前車上仍屬於本車的零件剛體
     private livingBodies(): cc.RigidBody[] {
         const out: cc.RigidBody[] = [];
         if (!this.root || !this.root.isValid) return out;
-
-        const allRbs: cc.RigidBody[] = [];
         this.root.getComponentsInChildren(cc.RigidBody).forEach(rb => {
-            if (rb.node && rb.node.isValid && rb.node.group === this.partGroup) {
-                allRbs.push(rb);
-            }
+            if (rb.node && rb.node.isValid && rb.node.group === this.partGroup) out.push(rb);
         });
-
-        const core = this.coreNode;
-        if (!core || !core.isValid) return [];
-
-        const adj = new Map<cc.Node, Set<cc.Node>>();
-        allRbs.forEach(rb => adj.set(rb.node, new Set()));
-
-        const joints = this.root.getComponentsInChildren(cc.Joint);
-        for (const j of joints) {
-            if (!j.isValid) continue;
-            const nodeA = j.node;
-            const nodeB = j.connectedBody ? j.connectedBody.node : null;
-            if (nodeA && nodeB && nodeA.isValid && nodeB.isValid) {
-                if (adj.has(nodeA) && adj.has(nodeB)) {
-                    adj.get(nodeA)!.add(nodeB);
-                    adj.get(nodeB)!.add(nodeA);
-                }
-            }
-        }
-
-        const visited = new Set<cc.Node>();
-        const queue: cc.Node[] = [core];
-        visited.add(core);
-
-        while (queue.length > 0) {
-            const curr = queue.shift()!;
-            const neighbors = adj.get(curr);
-            if (neighbors) {
-                for (const next of neighbors) {
-                    if (!visited.has(next)) {
-                        visited.add(next);
-                        queue.push(next);
-                    }
-                }
-            }
-        }
-
-        return allRbs.filter(rb => visited.has(rb.node));
+        return out;
     }
 
     private enterAir() {
