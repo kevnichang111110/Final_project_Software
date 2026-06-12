@@ -7,8 +7,10 @@ declare const Colyseus: any;
 
 @ccclass
 export default class OnlineClient extends cc.Component {
-    @property({ tooltip: "本地測試用 http://127.0.0.1:2567" })
-    serverUrl: string = "http://127.0.0.1:2567";
+    // @property({ tooltip: "本地測試用 http://127.0.0.1:2567" })
+    // serverUrl: string = "http://127.0.0.1:2567";
+    @property({ tooltip: "render網址" })
+    serverUrl: string = "https://car-server-rle9.onrender.com";
 
     @property({ tooltip: "房間名稱" })
     roomName: string = "car_room";
@@ -31,7 +33,7 @@ export default class OnlineClient extends cc.Component {
         // 【關鍵修正 2】：確保使用正確的 endpoint 格式
         // 0.17 版建議連線初期使用 http，SDK 會自動升級成 ws
         //let endpoint = this.serverUrl.replace("ws://", "http://").replace("localhost", "127.0.0.1");
-        const isLocal = true; // 要回本地測試就把這設為 true，要發布就設為 false
+        const isLocal = false; // 要回本地測試就把這設為 true，要發布就設為 false
     
         const endpoint = isLocal 
             ? "http://127.0.0.1:2567" 

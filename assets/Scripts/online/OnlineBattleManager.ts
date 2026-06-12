@@ -170,6 +170,14 @@ export default class OnlineBattleManager extends cc.Component {
                 }
             }
         });
+        if (this.p2Car && this.p2Car.coreNode) {
+            this.p2Car.coreNode.angle = 180; // 移除自動轉向 180 度的效果
+            
+            // 如果你的 CarBuilder 會對 root 節點做鏡像旋轉，也建議檢查一下：
+            if (this.p2Root) {
+                this.p2Root.angle = 180;
+            }
+        }
 
         // 【修正地圖同步】：徹底移除 cc.math.seed
         if (this.mapLoader) {
