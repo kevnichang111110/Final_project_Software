@@ -9,6 +9,7 @@ import CarBuilder from "./CarBuilder";
 import Bullet from "../Bullet";
 import MuzzleFlash from "../fx/MuzzleFlash";
 import HitSpark from "../fx/HitSpark";
+import Health from "../HealthManager";
 import OnlineRuntime, { OnlineInputState } from "../online/OnlineRuntime";
 
 // BattleNetSync 需要從 BattleManager 取得的東西
@@ -123,7 +124,9 @@ export default class BattleNetSync {
         if (!car || !car.partsMap) return out;
         car.partsMap.forEach((node, key) => {
             if (!node || !node.isValid) return;
-            out.push({ k: key, x: node.x, y: node.y, a: node.angle });
+            // h：該零件當前血量（整數，省頻寬），client 端用來畫血條（-1 = 無 Health）
+            const hm = node.getComponent(Health);
+            out.push({ k: key, x: node.x, y: node.y, a: node.angle, h: hm ? Math.round(hm.currentHP) : -1 });
         });
         return out;
     }
@@ -210,6 +213,11 @@ export default class BattleNetSync {
             if (node && node.isValid) {
                 node.setPosition(p.x, p.y);
                 node.angle = p.a;
+                // 主機血量 → 餵入 client 端血條（client 物理關閉、不會自行扣血）
+                if (p.h != null && p.h >= 0) {
+                    const hm = node.getComponent(Health);
+                    if (hm) hm.syncHP(p.h);
+                }
             }
         }
         // 主機已銷毀（快照中沒有）的零件 → 在 P2 同步斷開銷毀

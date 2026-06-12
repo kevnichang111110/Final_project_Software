@@ -310,6 +310,20 @@ export default class Health extends cc.Component {
         }
     }
 
+    // 【線上 P2／純畫面端】：直接用主機快照的血量驅動血條。
+    // client 端物理/傷害判定全關（不會走 takeDamage），所以血量只能由主機餵入。
+    // 掉血→讓血條明顯閃一下（hitTimer）；回血→高亮（healTimer）。實際繪製仍由 update 負責。
+    public syncHP(hp: number) {
+        const clamped = Math.max(0, Math.min(this.maxHP, hp));
+        if (clamped < this.currentHP - 0.5) {
+            this.hitTimer = this.hitShowDuration;
+        } else if (clamped > this.currentHP + 0.5) {
+            this.healTimer = 0.5;
+        }
+        this.currentHP = clamped;
+        this.lastHP = clamped;   // 同步歷史紀錄，避免 update 的回血偵測重複觸發
+    }
+
     // 【新增】：專屬的回血接收函式
     public heal(amount: number) {
         if (this.currentHP <= 0 || this.currentHP >= this.maxHP) return;

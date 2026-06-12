@@ -107,8 +107,10 @@ export default class BattleManager extends cc.Component implements INetBattle {
         // 決定模式：無房間 → 單機；有房間 → 主機(P1) / 純畫面端(P2)
         this.mode = !OnlineRuntime.isOnline() ? "LOCAL" : (OnlineRuntime.isHost() ? "HOST" : "CLIENT");
 
-        // CLIENT（線上純畫面端）完全不跑物理/傷害判定，只渲染主機快照
-        Health.activeInBattle = this.mode !== "CLIENT";
+        // CLIENT（線上純畫面端）不跑物理/傷害判定，只渲染主機快照；
+        // 但血條要顯示（血量由主機快照經 Health.syncHP 餵入），所以血條渲染對三種模式都開。
+        // client 端物理已關閉 → 不會有碰撞觸發 onBeginContact，activeInBattle=true 不會造成 client 自行扣血。
+        Health.activeInBattle = true;
 
         const physics = cc.director.getPhysicsManager();
         physics.enabled = this.mode !== "CLIENT";
@@ -858,11 +860,21 @@ export default class BattleManager extends cc.Component implements INetBattle {
         }
     }
 
-    // 滑鼠：直接用 getLocation 當世界座標（與遊戲既有的節點世界座標系一致）
+    // 滑鼠瞄準：把螢幕座標經主鏡頭轉成「世界座標」再存。
+    //   - 解析度無關：不同視窗大小/Fit 模式下都對得準。
+    //   - 線上一致：主客兩端渲染同一份世界，P2 送出的世界座標在主機端即為正確瞄準點，
+    //     主機用它驅動 P2 砲塔（ctrlB → updateMouseCannons）不需再做鏡像換算。
     private onMouseMove(e: cc.Event.EventMouse) {
-        const p = e.getLocation();
-        this.localInput.mouseX = p.x;
-        this.localInput.mouseY = p.y;
+        const sp = e.getLocation();
+        const cam = cc.Camera.main;
+        if (cam) {
+            const wp = cam.getScreenToWorldPoint(sp);
+            this.localInput.mouseX = wp.x;
+            this.localInput.mouseY = wp.y;
+        } else {
+            this.localInput.mouseX = sp.x;
+            this.localInput.mouseY = sp.y;
+        }
     }
 
     private onMouseDown(e: cc.Event.EventMouse) {
