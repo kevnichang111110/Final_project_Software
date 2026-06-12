@@ -296,6 +296,10 @@ export default class BattleManager extends cc.Component implements INetBattle {
             damage: this.bulletDamage,
             lifetime: this.bulletLifetime,
         });
+        // 線上 host：把槍口火光累積起來，隨快照同步給對手畫面
+        if (this.mode === "HOST") {
+            this.weapons.onMuzzle = (pos, dir) => { if (this.net) this.net.recordMuzzle(pos, dir); };
+        }
 
         this.sentRoundOver = false;
         if (this.mode === "LOCAL") this.setupLocalCars();

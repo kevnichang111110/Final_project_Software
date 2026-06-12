@@ -45,6 +45,9 @@ export default class WeaponSystem {
     private container: cc.Node;   // 子彈掛載的父節點（BattleManager.node）
     private config: BulletConfig;
 
+    // 線上 host 用：每次發射時回報槍口世界座標與方向，供同步槍口火光到對手畫面
+    public onMuzzle: ((worldPos: cc.Vec2, dir: cc.Vec2) => void) | null = null;
+
     constructor(bulletPrefab: cc.Prefab | null, container: cc.Node, config: BulletConfig) {
         this.bulletPrefab = bulletPrefab;
         this.container = container;
@@ -122,6 +125,7 @@ export default class WeaponSystem {
         // 槍口火光（玩家與 Bot 共用此路徑；發射冷卻已節流，每發一閃）。
         // 掛在 container（BattleManager.node）→ 武器被銷毀後特效仍在。
         MuzzleFlash.spawn(this.container, worldPos, dir);
+        if (this.onMuzzle) this.onMuzzle(worldPos, dir);
         return bullet;
     }
 }
