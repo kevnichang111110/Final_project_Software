@@ -21,6 +21,7 @@ export type Side = "PLAYER" | "BOT";
 export interface CarCtrlOptions {
     useWallRide?: boolean;
     useStuckRescue?: boolean;
+    useAirPhysics?: boolean;   // 預設 true。鏡像車（線上 P2）關掉，避免 AirPhysics 對 scaleX=-1/旋轉車的計算把車塞進牆
     airBoundary?: cc.Vec2[] | null;
     enemyStart?: cc.Vec2;
     gunFireInterval?: number;
@@ -55,8 +56,8 @@ export default class CarCtrl {
         this.gunFireInterval = opts.gunFireInterval != null ? opts.gunFireInterval : 0.25;
 
         this.wallRide = opts.useWallRide ? new WallRide(car, root, this.group) : null;
-        this.airPhysics = new AirPhysics(car, root, this.group);
-        if (opts.airBoundary) this.airPhysics.setBoundary(opts.airBoundary);
+        this.airPhysics = (opts.useAirPhysics !== false) ? new AirPhysics(car, root, this.group) : null;
+        if (this.airPhysics && opts.airBoundary) this.airPhysics.setBoundary(opts.airBoundary);
         this.rescue = opts.useStuckRescue
             ? new StuckRescue(car, root, this.group, opts.enemyStart || this.coreWorld() || cc.v2(0, 0))
             : null;

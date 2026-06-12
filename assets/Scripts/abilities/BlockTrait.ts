@@ -21,9 +21,31 @@ export default class BlockTrait extends cc.Component {
         this.healTargets = [];
 
         const root = this.node.parent;
-        if (!root) {
-            console.error(`[BlockTrait] ${this.node.name} 找不到 parent，無法掃描鄰居`);
-            return;
+        if (!root) return;
+
+        // 【核心修正整合】：因為檔名為 HealthManager.ts，Cocos 底層組件註冊名實為 "HealthManager"
+        // 自己也回（回血方塊本身被打也會自我修復）
+        let selfHp = this.getComponent("HealthManager") as any;
+        if (!selfHp) {
+            selfHp = this.getComponent("Health") as any;
+        }
+        if (selfHp) this.healTargets.push(selfHp);
+
+        // 上下左右相鄰：同 root 的兄弟節點即同車零件，局部座標可直接比距離（玩家／鏡像 bot 都適用）
+        const maxDist = GRID.CELL_SIZE * 1.25;
+        for (const sib of root.children) {
+            if (sib === this.node || !sib.isValid) continue;
+            
+            // 【核心修正整合】：對鄰居也採用雙重相容性檢查，確保絕對能正確抓到血量組件
+            let hp = sib.getComponent("HealthManager") as any;
+            if (!hp) {
+                hp = sib.getComponent("Health") as any;
+            }
+            if (!hp) continue;
+
+            const dx = sib.x - this.node.x;
+            const dy = sib.y - this.node.y;
+            if (Math.sqrt(dx * dx + dy * dy) <= maxDist) this.healTargets.push(hp);
         }
 
         console.log(`[BlockTrait] ${this.node.name} 開始掃描鄰居... 父節點是: ${root.name}`);
@@ -88,20 +110,15 @@ export default class BlockTrait extends cc.Component {
         const emit = this.fxTimer <= 0;
         const root = this.node.parent;
 
-        let hasHealedAny = false;
-
         for (const hp of this.healTargets) {
-            if (!hp || !hp.node || !hp.node.isValid) continue;
-
-            // 只有當前血量 > 0 (沒死) 且 小於最大血量時才回血
-            if (hp.currentHP > 0 && hp.currentHP < hp.maxHP) {
-                const oldHP = hp.currentHP;
-                hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
-                hasHealedAny = true;
-
-                // 偶爾印出回血數值確認
-                if (emit) {
-                    console.log(`[BlockTrait] ${this.node.name} 正在幫 ${hp.node.name} 回血: ${oldHP.toFixed(1)} -> ${hp.currentHP.toFixed(1)}`);
+            if (!hp || !hp.node || !hp.node.isValid) continue;        // 已被打掉就略過
+            if (hp.currentHP > 0 && hp.currentHP < hp.maxHP) {        // 死掉(<=0)的不復活
+                
+                // 【修改整合】：透過呼叫 heal 函式來回血，觸發血條顯示，不再直接硬改 currentHP 數值
+                if (hp.heal) {
+                    hp.heal(this.regenPerSecond * dt);
+                } else {
+                    hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
                 }
 
                 if (emit && root && root.isValid) {

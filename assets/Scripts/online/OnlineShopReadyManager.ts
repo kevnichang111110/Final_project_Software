@@ -28,6 +28,20 @@ export default class OnlineShopReadyManager extends cc.Component {
 
     public Ready() {
         cc.log("🚩 [StatusManager] 按下 Ready 按鈕");
+
+        // 離線（單機）：這顆按鈕等同本地「Fight」→ 存檔並進入戰鬥，
+        // 讓同一個商店場景（onlineShop.fire）兼用單機與連線。
+        if (!OnlineRuntime.isOnline()) {
+            const grid = this.scanAssemblyGrid();
+            if (grid.length === 0 || !grid.some(p => p.partName === "Core")) {
+                if (this.statusLabel) { this.statusLabel.node.active = true; this.statusLabel.string = "車子需要 Core 才能開始"; }
+                return;
+            }
+            GameManager.playerCarGrid = grid.map(p => ({ partName: p.partName, gridX: p.gridX, gridY: p.gridY }));
+            cc.director.loadScene("game");
+            return;
+        }
+
         if (!OnlineRuntime.room) {
             if (this.statusLabel) this.statusLabel.string = "尚未連到房間";
             (this as any).statusLabel.node.active = true;

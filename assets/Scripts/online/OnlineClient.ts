@@ -20,15 +20,28 @@ export default class OnlineClient extends cc.Component {
 
     //private static handlersInstalled: boolean = false;
     private isConnecting: boolean = false;
+    private cancelRequested: boolean = false;
+    private origMpText: string | null = null;   // Multiplayer 按鈕原始文字（第一次連線時記住）
+
+    // 連線進度條（程式生成，免編輯器綁定）
+    private progRoot: cc.Node | null = null;
+    private progFill: cc.Node | null = null;
 
     public async connectAndJoin() {
-        const myLocalName = await this.getMyDisplayName();
-        if (this.statusLabel) this.statusLabel.string = "連線中...";
+        // 連線中再按一次 = 取消配對
         if (this.isConnecting) {
-            cc.warn("正在連線中，請勿重複點擊");
+            this.cancelConnect();
             return;
         }
         this.isConnecting = true;
+        this.cancelRequested = false;
+        this.setConnectingUI(true);
+
+        this.showProgress();
+        this.setProgress(0.12);
+        const myLocalName = await this.getMyDisplayName();
+        if (this.statusLabel) this.statusLabel.string = "連線中...";
+        this.setProgress(0.35);
 
         // 【關鍵修正 2】：確保使用正確的 endpoint 格式
         // 0.17 版建議連線初期使用 http，SDK 會自動升級成 ws
@@ -43,38 +56,153 @@ export default class OnlineClient extends cc.Component {
         if (typeof Colyseus === "undefined") {
             cc.error("❌ 找不到 Colyseus 插件！請確認 colyseus.js 已經勾選 Import As Plugin。");
             if (this.statusLabel) this.statusLabel.string = "插件載入失敗";
+            this.afterCancelled();
             return;
         }
 
         try {
+            if (this.statusLabel) this.statusLabel.string = "連線伺服器中...";
+            this.setProgress(0.55);
             const client = new Colyseus.Client(endpoint);
-            
+
             // 【關鍵修正 3】：連線請求
             // 由於你是 0.15 插件連 0.17 伺服器，如果沒改 colyseus.js 的代碼，這裡還是會報 Reading name。
             // 請確保你已經按照我上一封訊息改了 colyseus.js 裡的 consumeSeatReservation。
-            const room = await client.joinOrCreate(this.roomName, { 
-                name: myLocalName 
+            const room = await client.joinOrCreate(this.roomName, {
+                name: myLocalName
             });
+
+            // join 進行中時若按了取消 → 進房後立刻退出，不繼續
+            if (this.cancelRequested) {
+                try { room.leave(); } catch (e) {}
+                this.afterCancelled();
+                return;
+            }
 
             OnlineRuntime.room = room;
             OnlineRuntime.roomId = room.roomId;
-            
+
             // 安裝訊息監聽
             OnlineClient.installRoomHandlers(room);
 
-            if (this.statusLabel) this.statusLabel.string = "連線成功！";
+            if (this.statusLabel) this.statusLabel.string = "連線成功！等待對手...";
             cc.log("[OnlineClient] ✅ 連線成功！房號:", room.roomId);
+            // 已進房 → 進度條進入「等待對手」的不確定爬行動畫（配對成功會切場景，進度條隨之消失）
+            this.startWaitingCrawl();
 
         } catch (e: any) {
             cc.error("[OnlineClient] ❌ 連線失敗:", e);
             let errorMsg = e?.message || String(e);
-            
+
             // 如果還是噴 Reading name，提示用戶檢查 colyseus.js
             if (errorMsg.includes("reading 'name'")) {
                 errorMsg = "版本不相容 (請檢查 colyseus.js 修改)";
             }
             if (this.statusLabel) this.statusLabel.string = "失敗: " + errorMsg;
+            this.afterCancelled();
         }
+    }
+
+    // ==================== 取消連線 / UI 切換 ====================
+    private cancelConnect() {
+        this.cancelRequested = true;
+        if (OnlineRuntime.room) { try { OnlineRuntime.room.leave(); } catch (e) {} }
+        OnlineRuntime.clearMatch();   // room=null + 重置配對狀態
+        if (this.statusLabel) this.statusLabel.string = "已取消";
+        this.afterCancelled();
+    }
+
+    private afterCancelled() {
+        this.hideProgress();
+        this.setConnectingUI(false);
+        this.isConnecting = false;
+    }
+
+    // 連線中：禁用 Singleplayer 並變灰；Multiplayer 文字切「取消配對」
+    private setConnectingUI(on: boolean) {
+        const sp = this.findNode("Singleplayer");
+        if (sp) {
+            const btn = sp.getComponent(cc.Button);
+            if (btn) btn.interactable = !on;
+            sp.opacity = on ? 120 : 255;
+        }
+        const mp = this.findNode("Multiplayer");
+        if (mp) {
+            const label = mp.getComponentInChildren(cc.Label);
+            if (label) {
+                if (this.origMpText === null) this.origMpText = label.string;
+                label.string = on ? "取消配對" : (this.origMpText || "Multiplayer");
+            }
+        }
+    }
+
+    // 從 Canvas 依名稱遞迴找節點（容忍任何巢狀結構，免編輯器綁定）
+    private findNode(name: string): cc.Node | null {
+        const canvas = cc.find("Canvas");
+        return canvas ? this.searchByName(canvas, name) : null;
+    }
+    private searchByName(root: cc.Node, name: string): cc.Node | null {
+        if (root.name === name) return root;
+        for (const child of root.children) {
+            const found = this.searchByName(child, name);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // ==================== 連線進度條（程式生成）====================
+    private showProgress() {
+        if (this.progRoot && this.progRoot.isValid) { this.progRoot.active = true; return; }
+        const canvas = cc.find("Canvas");
+        if (!canvas) return;
+        const W = 420, H = 22;
+
+        const root = new cc.Node("ConnProgress");
+        root.parent = canvas; root.zIndex = 500;
+        root.setPosition(0, -160);
+
+        const bg = new cc.Node("bg"); bg.parent = root;
+        const bgg = bg.addComponent(cc.Graphics);
+        bgg.fillColor = cc.color(28, 28, 38);
+        bgg.strokeColor = cc.color(120, 120, 150);
+        bgg.lineWidth = 2;
+        bgg.roundRect(-W / 2, -H / 2, W, H, H / 2); bgg.fill(); bgg.stroke();
+
+        const fill = new cc.Node("fill"); fill.parent = root;
+        fill.anchorX = 0;
+        fill.setPosition(-W / 2 + 2, 0);
+        const fg = fill.addComponent(cc.Graphics);
+        fg.fillColor = cc.color(90, 200, 130);
+        const fw = W - 4, fh = H - 6;
+        fg.roundRect(0, -fh / 2, fw, fh, fh / 2); fg.fill();
+        fill.scaleX = 0;
+
+        this.progRoot = root;
+        this.progFill = fill;
+    }
+
+    // 平滑前進到指定比例（0~1）
+    private setProgress(r: number) {
+        if (!this.progRoot || !this.progRoot.isValid) this.showProgress();
+        if (!this.progFill) return;
+        this.progRoot!.active = true;
+        this.progFill.stopAllActions();
+        cc.tween(this.progFill).to(0.25, { scaleX: cc.misc.clampf(r, 0, 1) }).start();
+    }
+
+    // 等待對手：在 85%~97% 之間來回爬行的不確定動畫
+    private startWaitingCrawl() {
+        if (!this.progFill) return;
+        this.progFill.stopAllActions();
+        this.progFill.scaleX = 0.85;
+        cc.tween(this.progFill)
+            .repeatForever(cc.tween().to(0.7, { scaleX: 0.97 }).to(0.7, { scaleX: 0.85 }))
+            .start();
+    }
+
+    private hideProgress() {
+        if (this.progFill) this.progFill.stopAllActions();
+        if (this.progRoot) this.progRoot.active = false;
     }
 
     public static installRoomHandlers(room: any) {
@@ -135,13 +263,7 @@ export default class OnlineClient extends cc.Component {
 
         // 轉發主機（P1）的世界狀態快照給純畫面端（P2）
         // 注意：伺服器端必須有對應的 onMessage("sync", ...) 把它廣播給對手，否則收不到
-        // 診斷用：確認 P2 確實收到快照；若完全沒印出代表伺服器未轉發 sync，確認穩定後可移除
-        let syncLogCount = 0;
         room.onMessage("sync", (msg: any) => {
-            if (syncLogCount < 5 || syncLogCount % 60 === 0) {
-                cc.log("[Online] 收到 sync 快照 #" + syncLogCount);
-            }
-            syncLogCount++;
             cc.systemEvent.emit("ONLINE_SYNC_POS", msg);
         });
 

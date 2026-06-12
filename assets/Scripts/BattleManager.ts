@@ -8,7 +8,7 @@
 //   - 噴射輪 boost（第 4 點，W / ↑ 觸發 WheelAbility.applyJet）
 
 import GameManager from "./GameManager";
-import { PHYSICS, BATTLE, GROUP, AIR, FLOW, DEBUG } from "./core/GameConstants";
+import { PHYSICS, BATTLE, GROUP, AIR, FLOW, DEBUG, HITFX } from "./core/GameConstants";
 import CarBuilder, { BuiltCar } from "./battle/CarBuilder";
 import BotAI from "./battle/BotAI";
 import WeaponSystem from "./battle/WeaponSystem";
@@ -144,6 +144,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
     onDestroy() {
         Health.activeInBattle = false;   // 離開戰鬥場景 → 關閉（商店等場景不顯示血條/不判傷）
+        HitFeedback.onTrigger = null;    // 清掉 static hook，避免殘留指向已銷毀的實例
         if (this.net) this.net.unbindEvents();
         cc.systemEvent.off("ONLINE_ROUND_RESULT", this.onRoundResult, this);
         cc.systemEvent.off("ONLINE_OPPONENT_LEFT", this.onOpponentLeft, this);
@@ -296,6 +297,14 @@ export default class BattleManager extends cc.Component implements INetBattle {
             damage: this.bulletDamage,
             lifetime: this.bulletLifetime,
         });
+        // 線上 host：把槍口火光與打擊火花累積起來，隨快照同步給對手畫面
+        if (this.mode === "HOST") {
+            this.weapons.onMuzzle = (pos, dir) => { if (this.net) this.net.recordMuzzle(pos, dir); };
+            // 只同步一般傷害火花；零件擊破等級（HITSTOP_DAMAGE）client 端會自己由 disjointPart 產生
+            HitFeedback.onTrigger = (pos, dmg) => {
+                if (this.net && dmg < HITFX.HITSTOP_DAMAGE) this.net.recordHit(pos, dmg / HITFX.HITSTOP_DAMAGE);
+            };
+        }
 
         this.sentRoundOver = false;
         if (this.mode === "LOCAL") this.setupLocalCars();
@@ -360,12 +369,15 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
         if (this.mode === "HOST") {
             const boundary = this.mapLoader ? this.mapLoader.getBoundary() : null;
+            // P1（己方、非鏡像）：完整手感，與本地玩家車一致
             this.ctrlA = new CarCtrl(this.playerCar, this.playerRoot!, "PLAYER", this.weapons!, {
                 useWallRide: FLOW.USE_WALLRIDE, useStuckRescue: FLOW.USE_STUCK_RESCUE,
                 airBoundary: boundary, gunFireInterval: this.gunFireInterval,
             });
+            // P2（對手、scaleX=-1 + root 180）：關掉 WallRide/AirPhysics/StuckRescue，
+            // 這幾套對「鏡像/旋轉車」的計算會把車塞進牆（沿用舊線上對 P2 的最小控制）。
             this.ctrlB = new CarCtrl(this.botCar, this.botRoot!, "BOT", this.weapons!, {
-                useWallRide: FLOW.USE_WALLRIDE, useStuckRescue: FLOW.USE_STUCK_RESCUE,
+                useWallRide: false, useAirPhysics: false, useStuckRescue: false,
                 airBoundary: boundary, gunFireInterval: this.gunFireInterval,
             });
         }
@@ -446,7 +458,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (this.mode === "CLIENT") {
             this.sendTimer += dt;
             if (this.sendTimer >= 0.05) { this.sendTimer = 0; if (this.net) this.net.sendInput(this.localInput); }
-            if (this.net) this.net.updateHud(this.isBattleStarted);
             return;
         }
 
@@ -459,7 +470,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (!this.isBattleStarted) {
             this.updateCountdown(dt);
             if (this.mode === "HOST") this.broadcastIfHost(dt);   // 倒數期間也廣播，讓 client 鏡像
-            if (this.net) this.net.updateHud(this.isBattleStarted);
             return;
         }
 
@@ -482,8 +492,28 @@ export default class BattleManager extends cc.Component implements INetBattle {
             this.broadcastIfHost(dt);
         }
 
+        this.clampCarVelocities();
         this.updateDebugDraw();
-        if (this.net) this.net.updateHud(this.isBattleStarted);
+    }
+
+    // 夾住車身零件線速度上限，避免高速撞擊把焊接瞬間撐開（看起來像散開又彈回）
+    private clampCarVelocities() {
+        const cap = PHYSICS.MAX_PART_SPEED;
+        if (cap <= 0) return;
+        const cap2 = cap * cap;
+        const clampRoot = (root: cc.Node | null) => {
+            if (!root) return;
+            root.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+                const v = rb.linearVelocity;
+                const m2 = v.x * v.x + v.y * v.y;
+                if (m2 > cap2) {
+                    const k = cap / Math.sqrt(m2);
+                    rb.linearVelocity = cc.v2(v.x * k, v.y * k);
+                }
+            });
+        };
+        clampRoot(this.playerRoot);
+        clampRoot(this.botRoot);
     }
 
     private broadcastIfHost(dt: number) {
@@ -670,11 +700,14 @@ export default class BattleManager extends cc.Component implements INetBattle {
 
     suddenDeathTick() {
         if (this.isGameOver || GameManager.isPaused) return;
+        // 多人模式雙方都是真人 → 扣血必須相同；單機維持玩家/Bot 不對稱（玩家略吃虧）
+        const p1Dot = BATTLE.PLAYER_CORE_DOT;
+        const p2Dot = this.mode === "LOCAL" ? BATTLE.BOT_CORE_DOT : BATTLE.PLAYER_CORE_DOT;
         if (this.playerCar && this.playerCar.coreHealth) {
-            this.playerCar.coreHealth.takeDamage(BATTLE.PLAYER_CORE_DOT);
+            this.playerCar.coreHealth.takeDamage(p1Dot);
         }
         if (this.botCar && this.botCar.coreHealth) {
-            this.botCar.coreHealth.takeDamage(BATTLE.BOT_CORE_DOT);
+            this.botCar.coreHealth.takeDamage(p2Dot);
         }
     }
 
@@ -694,7 +727,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const rb = node.getComponent(cc.RigidBody);
         if (rb) {
             rb.type = cc.RigidBodyType.Dynamic;
-            rb.linearVelocity = cc.v2(0, -300);
+            rb.linearVelocity = cc.v2(0, -180);   // 降低落下速度，減少砸到車身把零件撐開的衝擊
             rb.angularVelocity = (Math.random() - 0.5) * 500;
         }
         if (this.mode === "HOST" && this.net) this.net.registerDebris(node, idx);
@@ -755,7 +788,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
             || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
 
-        let target = "Shop";
+        let target = "onlineShop";   // 單機與連線共用同一個商店場景
         if (finished) {
             if (GameManager.playerWins >= BATTLE.WINS_TO_FINISH) {
                 // 玩家贏得整場 → 記錄到 Firebase（未登入 / 未設定時為安全的 no-op）
