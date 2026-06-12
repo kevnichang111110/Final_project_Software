@@ -1408,7 +1408,7 @@
       "__id__": 6
     },
     "bgmClip": {
-      "__uuid__": "381349b0-2b16-42bc-b49a-65a594b828be"
+      "__uuid__": "addd9503-408d-4b47-8504-84ab857559cb"
     },
     "suddenDeathSfx": {
       "__uuid__": "d7da9cae-7d64-4130-91b4-83dad6b435c2"
@@ -1430,6 +1430,9 @@
     "bulletSpeed": 1600,
     "bulletDamage": 20,
     "bulletLifetime": 3,
+    "customFont": {
+      "__uuid__": "fee450e1-2173-41a1-b46a-5d20424f0a6f"
+    },
     "_id": "09/C8EfolKyZsIEIA8eZTI"
   },
   {

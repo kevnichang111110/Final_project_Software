@@ -54,6 +54,8 @@ export default class BattleManager extends cc.Component implements INetBattle {
     @property bulletDamage: number = 20;
     @property bulletLifetime: number = 3;
 
+    @property(cc.Font)
+    customFont: cc.Font |null = null;
     // ===== 戰鬥狀態 =====
     private matchTimer: number = BATTLE.MATCH_TIME;
     private isSuddenDeath = false;
@@ -188,20 +190,24 @@ export default class BattleManager extends cc.Component implements INetBattle {
         node.color = color;
 
         const label = node.addComponent(cc.Label);
+        if (this.customFont) {
+            label.font = this.customFont;
+        }
         label.fontSize = 40;
         label.lineHeight = 44;
         label.horizontalAlign = left ? cc.Label.HorizontalAlign.LEFT : cc.Label.HorizontalAlign.RIGHT;
-
+        label.useSystemFont = false; 
+        
         const widget = node.addComponent(cc.Widget);
         widget.isAlignTop = true;
-        widget.top = 24;
+        widget.top = 60;
         if (left) {
             widget.isAlignLeft = true;
-            widget.left = 30;
+            widget.left = 200;
             node.anchorX = 0;
         } else {
             widget.isAlignRight = true;
-            widget.right = 30;
+            widget.right = 280;
             node.anchorX = 1;
         }
         widget.updateAlignment();

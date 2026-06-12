@@ -32,30 +32,29 @@ export default class GameManager {
 
     public static botConfigs = [
         [
-            { gridX: 0, gridY: 1, partName: "Body1" },
-            { gridX: 1, gridY: 1, partName: "Core" },
-            { gridX: 2, gridY: 1, partName: "Body3" },
-            { gridX: 0, gridY: 0, partName: "Wheel1" },
-            { gridX: 2, gridY: 0, partName: "Wheel1" },
-            { gridX: 3, gridY: 1, partName: "Weapon1" }
+            { gridX: 1, gridY: 1, partName: "Body1" },
+            { gridX: 2, gridY: 1, partName: "Core" },
+            { gridX: 3, gridY: 1, partName: "Body1" },
+            { gridX: 0, gridY: 1, partName: "Wheel1" },
+            { gridX: 3, gridY: 0, partName: "Wheel1" }
         ],
 
         [
-            { gridX: 1, gridY: 1, partName: "Core" },
-            { gridX: 2, gridY: 1, partName: "Body1" },
+            { gridX: 1, gridY: 1, partName: "Body1" },
+            { gridX: 2, gridY: 1, partName: "Core" },
             { gridX: 3, gridY: 1, partName: "Body1" },
             { gridX: 0, gridY: 1, partName: "Wheel1" },
-            { gridX: 3, gridY: 0, partName: "Wheel2" },
+            { gridX: 3, gridY: 0, partName: "Wheel1" },
+            { gridX: 3, gridY: 2, partName: "Wheel1" },
             { gridX: 4, gridY: 1, partName: "Weapon1" }
         ],
         [
             { gridX: 1, gridY: 1, partName: "Core" },
-            { gridX: 2, gridY: 1, partName: "Body1" },
-            { gridX: 3, gridY: 1, partName: "Body1" },
-            { gridX: 0, gridY: 1, partName: "Wheel1" },
+            { gridX: 2, gridY: 1, partName: "Body2" },
+            { gridX: 3, gridY: 1, partName: "Body2" },
+            { gridX: 0, gridY: 1, partName: "Wheel2" },
             { gridX: 3, gridY: 0, partName: "Wheel2" },
-            { gridX: 3, gridY: 2, partName: "Wheel2" },
-            { gridX: 4, gridY: 1, partName: "Gun1" }
+            { gridX: 4, gridY: 1, partName: "Weapon1" }
         ]
     ];
 
