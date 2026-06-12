@@ -1,5 +1,5 @@
 import OnlineRuntime from "./OnlineRuntime";
-
+import FirebaseService from "../net/FirebaseService";
 const { ccclass, property } = cc._decorator;
 
 // 【關鍵修正 1】：這行絕對不能少，它是告訴 TypeScript 不要去 import，而是去全域找 Colyseus 插件
@@ -16,15 +16,26 @@ export default class OnlineClient extends cc.Component {
     @property(cc.Label)
     statusLabel: cc.Label | null = null;
 
-    private static handlersInstalled: boolean = false;
+    //private static handlersInstalled: boolean = false;
+    private isConnecting: boolean = false;
 
     public async connectAndJoin() {
+        const myLocalName = await this.getMyDisplayName();
         if (this.statusLabel) this.statusLabel.string = "連線中...";
+        if (this.isConnecting) {
+            cc.warn("正在連線中，請勿重複點擊");
+            return;
+        }
+        this.isConnecting = true;
 
         // 【關鍵修正 2】：確保使用正確的 endpoint 格式
         // 0.17 版建議連線初期使用 http，SDK 會自動升級成 ws
-        let endpoint = this.serverUrl.replace("ws://", "http://").replace("localhost", "127.0.0.1");
-
+        //let endpoint = this.serverUrl.replace("ws://", "http://").replace("localhost", "127.0.0.1");
+        const isLocal = true; // 要回本地測試就把這設為 true，要發布就設為 false
+    
+        const endpoint = isLocal 
+            ? "http://127.0.0.1:2567" 
+            : "https://car-server-rle9.onrender.com/";
         cc.log("[OnlineClient] 準備連線至:", endpoint);
 
         if (typeof Colyseus === "undefined") {
@@ -39,7 +50,9 @@ export default class OnlineClient extends cc.Component {
             // 【關鍵修正 3】：連線請求
             // 由於你是 0.15 插件連 0.17 伺服器，如果沒改 colyseus.js 的代碼，這裡還是會報 Reading name。
             // 請確保你已經按照我上一封訊息改了 colyseus.js 裡的 consumeSeatReservation。
-            const room = await client.joinOrCreate(this.roomName);
+            const room = await client.joinOrCreate(this.roomName, { 
+                name: myLocalName 
+            });
 
             OnlineRuntime.room = room;
             OnlineRuntime.roomId = room.roomId;
@@ -90,11 +103,17 @@ export default class OnlineClient extends cc.Component {
             OnlineRuntime.roomId = msg.roomId || room.roomId;
             OnlineRuntime.round = Number(msg.round || 1);
             if (msg.scores) OnlineRuntime.setScores(msg.scores);
+            if (msg.name) {
+                if (OnlineRuntime.mySeat === "P1") OnlineRuntime.p1Name = msg.name;
+                else OnlineRuntime.p2Name = msg.name;
+            }
             cc.log("[Online] 你被分配到:", OnlineRuntime.mySeat);
         });
 
         room.onMessage("matched", (msg: any) => {
-            cc.log("[Online] 配對成功，準備進入商店");
+            cc.log("[Online] 配對成功");
+            if (msg.p1Name) OnlineRuntime.p1Name = msg.p1Name;
+            if (msg.p2Name) OnlineRuntime.p2Name = msg.p2Name;
             if (msg.scores) OnlineRuntime.setScores(msg.scores);
             cc.director.loadScene(OnlineRuntime.shopSceneName);
         });
@@ -128,5 +147,29 @@ export default class OnlineClient extends cc.Component {
             cc.systemEvent.emit("ONLINE_START_SUDDEN_DEATH");
         });
         
+    }
+    private async getMyDisplayName(): Promise<string> {
+        const user = FirebaseService.getUser();
+        if (!user) {
+            return cc.sys.localStorage.getItem("userName") || "Player";
+        }
+
+        try {
+            const projectId = "ssdfinal-c6446";
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${user.uid}`;
+            const res = await fetch(url);
+
+            if (res.ok) {
+                const data = await res.json();
+                const name = data?.fields?.name?.stringValue;
+                if (name && String(name).trim()) {
+                    return String(name).trim();
+                }
+            }
+        } catch (e) {
+            cc.warn("[OnlineClient] 讀取玩家名字失敗，改用預設名稱");
+        }
+
+        return user.email ? user.email.split("@")[0] : "Player";
     }
 }

@@ -291,7 +291,7 @@ export default class ShopManager extends cc.Component {
         // 檢查目前是否為線上模式
         if (OnlineRuntime.isOnline()) {
             // 線上模式：顯示 P1 vs P2
-            this.scoreLabel.string = `P1-${OnlineRuntime.p1Wins} v.s. ${OnlineRuntime.p2Wins}-P2`;
+            this.scoreLabel.string = `${OnlineRuntime.p1Name}-${OnlineRuntime.p1Wins} v.s. ${OnlineRuntime.p2Wins}-${OnlineRuntime.p2Name}`;
             
             // 選擇性：根據你是哪位玩家改變顏色，讓玩家更有帶入感
             if (OnlineRuntime.mySeat === "P1") {

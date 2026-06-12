@@ -5610,7 +5610,7 @@
       "__id__": 2
     },
     "_children": [],
-    "_active": false,
+    "_active": true,
     "_components": [
       {
         "__id__": 116
@@ -5621,13 +5621,13 @@
     "_color": {
       "__type__": "cc.Color",
       "r": 255,
-      "g": 255,
-      "b": 255,
+      "g": 0,
+      "b": 0,
       "a": 255
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 80,
+      "width": 308.36,
       "height": 50.4
     },
     "_anchorPoint": {
@@ -5639,7 +5639,7 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        300,
+        250,
         60,
         0,
         0,
@@ -5679,8 +5679,8 @@
     ],
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
-    "_string": "準備",
-    "_N$string": "準備",
+    "_string": "Build your own car!",
+    "_N$string": "Build your own car!",
     "_fontSize": 40,
     "_lineHeight": 40,
     "_enableWrapText": true,
