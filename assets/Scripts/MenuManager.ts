@@ -49,7 +49,8 @@ export default class MenuManager extends cc.Component {
     }
     Singleplayer() {
         GameManager.resetAllData();
-        cc.director.loadScene("Shop");
+        // 單機與連線共用同一個商店場景（onlineShop.fire）；離線時 Ready 按鈕等同 Fight
+        cc.director.loadScene("onlineShop");
     }
     Multiplayer() {
         GameManager.resetAllData();
