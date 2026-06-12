@@ -34,7 +34,7 @@ export default class OnlineRuntime {
     // Phase 1：線上對戰改用統一的本地戰鬥場景 game.fire（同一個 BattleManager 依房間自動切 HOST/CLIENT）
     public static onlineGameSceneName: string = "game";
     public static shopSceneName: string = "onlineShop";
-    public static menuSceneName: string = "Menu";
+    public static menuSceneName: string = "Result";
 
     public static defaultInput(): OnlineInputState {
         return { worldDir: 0, attack: false, boost: false, mouseDown: false, mouseX: 0, mouseY: 0 };
