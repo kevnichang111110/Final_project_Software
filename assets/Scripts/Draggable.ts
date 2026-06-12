@@ -68,9 +68,6 @@ export default class Draggable extends cc.Component {
         }
 
         this.node.setSiblingIndex(this.node.parent.childrenCount - 1);
-
-        // 零件被移除後，檢查是否有零件斷連並掉落
-        this.scheduleOnce(() => this.checkAndDisconnectFloatingParts(), 0);
     }
 
     onDragMove(event: cc.Event.EventTouch) {
