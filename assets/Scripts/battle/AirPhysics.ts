@@ -246,6 +246,10 @@ export default class AirPhysics {
 
         this.parts.forEach((p, nd) => {
             if (!nd || !nd.isValid) return;
+
+            // 如果該零件群組已經不是車體不要再把它當作車體的一部分還原
+            if (nd.group !== this.partGroup) return;
+
             const rb = nd.getComponent(cc.RigidBody);
             if (!rb) return;
 
@@ -253,7 +257,7 @@ export default class AirPhysics {
             const ry = p.ox * sin + p.oy * cos;
 
             rb.type = p.type0;
-            rb.enabledContactListener = true;   // 還原 Dynamic 後補開碰撞監聽，否則落地後收不到傷害
+            rb.enabledContactListener = true;
             rb.linearVelocity = cc.v2(this.comVel.x - omegaRad * ry, this.comVel.y + omegaRad * rx);
             rb.angularVelocity = this.omega;
             rb.awake = true;

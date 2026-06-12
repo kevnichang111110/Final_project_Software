@@ -250,6 +250,12 @@ export default class CarBuilder {
 
         node.group = GROUP.DEFAULT;
 
+        const rb = node.getComponent(cc.RigidBody);
+        if (rb) {
+            rb.type = cc.RigidBodyType.Dynamic;
+            rb.awake = true; // 喚醒物理引擎計算
+        }
+
         // 爆炸後立刻消失，不做上拋、不做淡化。
         // 延遲一個極短時間再銷毀，是為了避開「在物理碰撞回呼當下直接 destroy」可能造成的 Box2D 崩潰。
         cc.tween(node)
