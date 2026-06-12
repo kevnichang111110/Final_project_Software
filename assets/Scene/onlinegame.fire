@@ -61,7 +61,7 @@
     "_groupIndex": 0,
     "groupIndex": 0,
     "autoReleaseAssets": false,
-    "_id": "28620b22-7211-46b9-9058-81d0099bb7db"
+    "_id": "aa0b1f6c-6f67-4e78-968d-64b098d54452"
   },
   {
     "__type__": "cc.Node",
@@ -1348,7 +1348,7 @@
     "_id": "29zXboiXFBKoIV4PQ2liTe"
   },
   {
-    "__type__": "94f01NkYTVN/Z/RmCHL7/T6",
+    "__type__": "8a663g4/RdGmJSYgTfxw22W",
     "_name": "",
     "_objFlags": 0,
     "node": {
@@ -1358,27 +1358,21 @@
     "timerLabel": {
       "__id__": 18
     },
+    "countdownLabel": {
+      "__id__": 22
+    },
     "suddenDeathLabel": {
       "__id__": 20
     },
-    "countdownLabel": {
-      "__id__": 22
+    "resultLabel": {
+      "__id__": 16
     },
     "allPrefabs": [
       {
         "__uuid__": "95727a58-6bc9-416b-abf4-0f1b10ad017e"
       },
       {
-        "__uuid__": "663464c7-5c23-4251-9d48-1bd82391fea0"
-      },
-      {
-        "__uuid__": "01ba72b6-1828-420a-8c7a-01042a744f9c"
-      },
-      {
         "__uuid__": "03439411-8cef-4a3c-8702-257dae47b5c2"
-      },
-      {
-        "__uuid__": "cd073326-815d-4cde-9b92-9a9c561cbad2"
       },
       {
         "__uuid__": "f83df3f8-badb-414e-8271-f94a6a1f6227"
@@ -1387,45 +1381,26 @@
         "__uuid__": "a2fb8b71-0fe2-4d34-8b3f-c36ebdee5ab2"
       },
       {
-        "__uuid__": "6937dca2-a99a-44c1-afb1-0f02dddd0bc1"
+        "__uuid__": "663464c7-5c23-4251-9d48-1bd82391fea0"
       },
       {
-        "__uuid__": "ad22639c-23fd-4a8f-b191-77e25d2c99cd"
+        "__uuid__": "01ba72b6-1828-420a-8c7a-01042a744f9c"
+      },
+      {
+        "__uuid__": "cd073326-815d-4cde-9b92-9a9c561cbad2"
       }
     ],
-    "settingsPrefab": {
-      "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
-    },
-    "resultLabel": {
-      "__id__": 16
+    "bulletPrefab": {
+      "__uuid__": "954308fb-57e0-4316-a7a2-6b0e83b1715b"
     },
     "mapLoader": {
       "__id__": 6
     },
-    "bgmClip": {
-      "__uuid__": "381349b0-2b16-42bc-b49a-65a594b828be"
-    },
-    "suddenDeathSfx": {
-      "__uuid__": "d7da9cae-7d64-4130-91b4-83dad6b435c2"
-    },
-    "countdownBgmClip": {
-      "__uuid__": "92325f9f-64b3-4ffd-828a-999221fc8258"
-    },
-    "victorySfx": {
-      "__uuid__": "d58ba421-f533-4dd6-8559-54bc0d0d10b9"
-    },
-    "defeatSfx": {
-      "__uuid__": "8eb37dbe-74d8-437d-821d-93ab297e0dd7"
-    },
-    "bulletPrefab": {
-      "__uuid__": "954308fb-57e0-4316-a7a2-6b0e83b1715b"
-    },
     "gunFireInterval": 0.25,
-    "botGunFireInterval": 0.9,
     "bulletSpeed": 1600,
     "bulletDamage": 20,
     "bulletLifetime": 3,
-    "_id": "09/C8EfolKyZsIEIA8eZTI"
+    "_id": "2dAtF2e1xKvoWOgkVUrgQI"
   },
   {
     "__type__": "cc.Node",

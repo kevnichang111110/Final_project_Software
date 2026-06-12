@@ -12,6 +12,7 @@ import {
 import JointFactory from "./JointFactory";
 import Explosion from "./Explosion";
 import HitFeedback from "../fx/HitFeedback";
+import WheelDust from "../fx/WheelDust";
 import Health from "../HealthManager";
 import MouseCannon from "../weapons/MouseCannon";
 
@@ -160,6 +161,9 @@ export default class CarBuilder {
                     result.wheelJoints.push(r.joint);
                     result.wheelMultipliers.set(r.joint, r.multiplier);
                 }
+                // 滾動揚塵：掛在輪子上，貼地+轉得夠快時節流冒塵。特效掛車身 root 以存活於輪子銷毀後。
+                const dust = node.addComponent(WheelDust);
+                dust.carRoot = root;
             } else if (isWeaponNode(node)) {
                 const drag2 = getDraggable(node);
                 const mc = node.getComponent(MouseCannon);
