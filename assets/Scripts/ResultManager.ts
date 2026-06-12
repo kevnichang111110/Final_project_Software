@@ -106,39 +106,95 @@ export default class ResultManager extends cc.Component {
         }
     }
 
-    playResult() {
+   playResult() {
+        // 先決定勝負特效
         if (this.isWin) {
             if (this.fireworkParticle) {
                 this.fireworkParticle.node.active = true;
                 this.fireworkParticle.resetSystem(); 
             }
-            // 寫入 Firebase
-            FirebaseService.updateGameResult(true);
         } else {
             if (this.smokeParticle) {
                 this.smokeParticle.node.active = true;
                 this.smokeParticle.resetSystem();
-                
-                // 輸掉時，把整台車染成灰黑色，增加破敗感
                 if (this.carRoot) {
-                     this.carRoot.children.forEach(child => {
-                          child.color = cc.color(80, 80, 80); 
-                     });
+                     this.carRoot.children.forEach(child => child.color = cc.color(80, 80, 80)); 
                 }
             }
-            // 寫入 Firebase
-            FirebaseService.updateGameResult(false);
         }
 
-        // 文字依序滑入
+        // === 🚀 1. 設定前兩行文字 (勝負與比分) ===
+        if (this.textLines.length >= 1) {
+            const titleLabel = this.textLines[0].getComponent(cc.Label);
+            if (titleLabel) {
+                titleLabel.string = this.isWin ? "VICTORY 🏆" : "DEFEAT 💀";
+                this.textLines[0].color = this.isWin ? cc.Color.YELLOW : cc.Color.RED; 
+            }
+        }
+
+        if (this.textLines.length >= 2) {
+            const scoreLabel = this.textLines[1].getComponent(cc.Label);
+            if (scoreLabel) {
+                scoreLabel.string = `最終比分：玩家 ${GameManager.playerWins} - ${GameManager.botWins} 電腦`;
+            }
+        }
+
+        // === 📊 2. 設定第三行文字 (先給予預設載入文字) ===
+        if (this.textLines.length >= 3) {
+            const recordLabel = this.textLines[2].getComponent(cc.Label);
+            if (recordLabel) {
+                recordLabel.string = "正在計算最新戰績... ⏳";
+            }
+        }
+
+        // === 🎬 3. 執行文字依序滑入動畫 ===
         this.textLines.forEach((line, index) => {
             cc.tween(line)
                 .delay(index * 0.4) 
                 .to(0.6, { x: 0, opacity: 255 }, { easing: "backOut" })
                 .start();
         });
-    }
-    
+
+        // === 🌐 4. 後台同步更新 Firebase 並用 REST API 抓回最新勝率 ===
+        // 呼叫更新資料庫，並利用 .then() 等待更新完成
+        FirebaseService.updateGameResult(this.isWin)
+            .then(() => {
+                // 資料庫更新成功後，立刻去抓取目前登入玩家的最新文件
+                const user = FirebaseService.getUser();
+                if (!user) return null;
+
+                const projectId = "ssdfinal-c6446"; 
+                const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${user.uid}`;
+                return fetch(url);
+            })
+            .then(res => res && res.ok ? res.json() : null)
+            .then(data => {
+                // 成功拿到包含這場比賽後的最新戰績！
+                if (data && data.fields && this.textLines.length >= 3) {
+                    const winRate = data.fields.winRate ? parseFloat(data.fields.winRate.doubleValue || data.fields.winRate.integerValue || "0") : 0;
+                    const currentStreak = data.fields.currentStreak && data.fields.currentStreak.integerValue ? parseInt(data.fields.currentStreak.integerValue) : 0;
+                    const maxStreak = data.fields.maxStreak && data.fields.maxStreak.integerValue ? parseInt(data.fields.maxStreak.integerValue) : 0;
+
+                    const recordLabel = this.textLines[2].getComponent(cc.Label);
+                    if (recordLabel) {
+                        // 帥氣刷新文字！例如：目前勝率：66.7% ｜ 連勝：3 (最高：5)
+                        recordLabel.string = `目前勝率：${winRate}%  |  當前連勝：${currentStreak} (最高：${maxStreak})`;
+                        
+                        // 額外小驚喜：如果正在連勝中，讓字體亮起來
+                        if (currentStreak >= 2 && this.isWin) {
+                            this.textLines[2].color = cc.color(100, 255, 100); // 綠色代表連勝發光
+                        }
+                    }
+                }
+            })
+            .catch(err => {
+                console.error("結算畫面更新戰績失敗：", err);
+                if (this.textLines.length >= 3) {
+                    const recordLabel = this.textLines[2].getComponent(cc.Label);
+                    if (recordLabel) recordLabel.string = "戰績更新失聯 📡";
+                }
+            });
+    }   
     // 給介面按鈕綁定的函數，結算完後回到主選單或清除資料
     onBackToMenu() {
         GameManager.resetAllData();
