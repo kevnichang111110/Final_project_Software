@@ -58,10 +58,10 @@ export default class LeaderboardManager extends cc.Component {
                 this.setChildLabel(node, "name", r.name);
                 
                 // 【修改 1】原本塞 wins 的地方，改成顯示「當前連勝」
-                this.setChildLabel(node, "wins", `連勝: ${r.currentStreak}`);
+                this.setChildLabel(node, "wins", `${r.currentStreak}`);
                 
                 // 【修改 2】原本塞 bestScore 的地方，改成顯示「勝率與最高連勝」
-                this.setChildLabel(node, "score", `${r.winRate}% (最高${r.maxStreak}連勝)`);
+                this.setChildLabel(node, "score", `${r.winRate}%`);
                 
                 // 頭像處理邏輯維持不變
                 const avatarNode = node.getChildByName("avatar");

@@ -322,7 +322,10 @@
     "_enabled": true,
     "maps": [
       {
-        "__uuid__": "b8a805ae-9739-444f-81ba-705f4bc804f0"
+        "__uuid__": "e39e8f6a-df24-4b62-b2f3-c5162bc51c5d"
+      },
+      {
+        "__uuid__": "d9e644c3-4174-470f-91ef-e8beba519548"
       }
     ],
     "spawnMode": 0,
@@ -341,6 +344,7 @@
     "spawnMargin": 120,
     "minSpacing": 220,
     "springToFloor": true,
+    "seesawSpawnHeight": 220,
     "avoidCars": true,
     "carClearRadius": 170,
     "autoDrawVisuals": true,
@@ -360,6 +364,7 @@
       "b": 58,
       "a": 255
     },
+    "voidTexture": null,
     "visualZIndex": -10,
     "group": "default",
     "seed": 0,
@@ -1506,7 +1511,7 @@
       "__id__": 31
     },
     "_children": [],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 33
@@ -1622,7 +1627,7 @@
       "__id__": 31
     },
     "_children": [],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 36
@@ -1738,7 +1743,7 @@
       "__id__": 31
     },
     "_children": [],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 39
@@ -2070,7 +2075,7 @@
       "__id__": 31
     },
     "_children": [],
-    "_active": true,
+    "_active": false,
     "_components": [
       {
         "__id__": 43
