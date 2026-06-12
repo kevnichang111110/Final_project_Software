@@ -32,21 +32,28 @@ export default class ProfileManager extends cc.Component {
         const projectId = "ssdfinal-c6446"; 
         const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${user.uid}`;
 
-        fetch(url)
+       fetch(url)
             .then(res => res.ok ? res.json() : null)
             .then(data => {
                 if (data && data.fields) {
-                    const name = data.fields.name ? data.fields.name.stringValue : "Unknown";
-                    
-                    let wins = data.fields.wins && data.fields.wins.integerValue ? parseInt(data.fields.wins.integerValue) : 0;
-                    let bestScore = data.fields.bestScore && data.fields.bestScore.integerValue ? parseInt(data.fields.bestScore.integerValue) : 0;
-                    
-                    // 讀取頭像編號 (預設 0)
+                    const name = data.fields.name ? data.fields.name.stringValue : "未命名玩家";
                     this.currentAvatarId = data.fields.avatarId && data.fields.avatarId.integerValue ? parseInt(data.fields.avatarId.integerValue) : 0;
 
+                    // 1. 抓取新欄位
+                    const winRate = data.fields.winRate ? parseFloat(data.fields.winRate.doubleValue || data.fields.winRate.integerValue || "0") : 0;
+                    const currentStreak = data.fields.currentStreak && data.fields.currentStreak.integerValue ? parseInt(data.fields.currentStreak.integerValue) : 0;
+                    const maxStreak = data.fields.maxStreak && data.fields.maxStreak.integerValue ? parseInt(data.fields.maxStreak.integerValue) : 0;
+                    const wins = data.fields.wins && data.fields.wins.integerValue ? parseInt(data.fields.wins.integerValue) : 0;
+                    const totalGames = data.fields.totalGames && data.fields.totalGames.integerValue ? parseInt(data.fields.totalGames.integerValue) : 0;
+
+                    // 2. 更新到 UI (欄位變數名可根據你編輯器的 Label 自由調整)
                     if (this.nameInput) this.nameInput.string = name;
-                    if (this.winsLabel) this.winsLabel.string = `Win：${wins}`;
-                    if (this.scoreLabel) this.scoreLabel.string = `High Score：${bestScore}`;
+                    
+                    // 顯示例如：勝率：75.5% (4勝/5局)
+                    if (this.winsLabel) this.winsLabel.string = `勝率：${winRate}% (${wins}勝/${totalGames}局)`;
+                    
+                    // 顯示例如：連勝：3 (最高：7)
+                    if (this.scoreLabel) this.scoreLabel.string = `當前連勝：${currentStreak} (最高：${maxStreak})`;
                     
                     this.updateAvatarDisplay();
                 }
@@ -76,18 +83,34 @@ export default class ProfileManager extends cc.Component {
     // 儲存按鈕事件
     onSaveProfile() {
         const user = FirebaseService.getUser();
-        if (!user) return;
+        if (!user) {
+            cc.warn("尚未登入，無法儲存");
+            return;
+        }
 
         const newName = this.nameInput ? this.nameInput.string : "未命名玩家";
+        const projectId = "ssdfinal-c6446"; 
         
-        // 寫入資料通常不會被防火牆擋，我們直接用官方 SDK 寫入最方便
-        firebase.firestore().collection("users").doc(user.uid).set({
-            name: newName,
-            avatarId: this.currentAvatarId
-        }, { merge: true })
-        .then(() => {
+        // 使用 PATCH 更新指定欄位 (name, avatarId)
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${user.uid}?updateMask.fieldPaths=name&updateMask.fieldPaths=avatarId`;
+
+        fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fields: {
+                    name: { stringValue: newName },
+                    avatarId: { integerValue: this.currentAvatarId }
+                }
+            })
+        })
+        .then(res => {
+            if (!res.ok) throw new Error("寫入失敗，狀態碼：" + res.status);
+            return res.json();
+        })
+        .then(data => {
             cc.log("資料更新成功！");
-            // 可在此處加入一個「儲存成功」的提示文字
+            // 你可以在這裡加入一個「儲存成功」的 UI 提示
         })
         .catch(err => {
             cc.error("資料更新失敗：", err);

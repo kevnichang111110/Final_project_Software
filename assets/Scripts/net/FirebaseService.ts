@@ -161,48 +161,70 @@ export default class FirebaseService {
             .catch(err => { console.error(err); return []; });
     }
 
-    static updateGameResult(isWin: boolean): Promise<any> {
+   static updateGameResult(isWin: boolean): Promise<any> {
         const u = this.user;
         if (!this.isReady() || !u) return Promise.resolve();
 
-        const db = firebase.firestore();
-        const userRef = db.collection("users").doc(u.uid);
+        console.log("【REST API】準備結算戰績... 本局獲勝：", isWin);
+        const projectId = "ssdfinal-c6446";
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${u.uid}`;
 
-        // 使用 Transaction (交易) 確保讀取目前的連勝與勝場進行正確累加
-        return db.runTransaction((transaction: any) => {
-            return transaction.get(userRef).then((doc: any) => {
-                // 如果是新玩家，給予預設值
-                const data = doc.exists ? doc.data() : {};
-                let wins = data.wins || 0;
-                let totalGames = data.totalGames || 0;
-                let currentStreak = data.currentStreak || 0;
-                let maxStreak = data.maxStreak || 0;
+        // 1. 先去抓舊資料
+        return fetch(url)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                let wins = 0, totalGames = 0, currentStreak = 0, maxStreak = 0;
+                let name = "未命名玩家";
+                let avatarId = 0;
 
-                // 局數必定 +1
-                totalGames += 1;
-
-                if (isWin) {
-                    wins += 1;
-                    currentStreak += 1; // 連勝增加
-                    if (currentStreak > maxStreak) {
-                        maxStreak = currentStreak; // 破最高連勝紀錄
-                    }
-                } else {
-                    currentStreak = 0; // 輸了，當前連勝直接無情歸零
+                // 2. 如果資料庫有舊資料，就讀出來
+                if (data && data.fields) {
+                    if (data.fields.wins) wins = parseInt(data.fields.wins.integerValue || data.fields.wins.doubleValue || "0");
+                    if (data.fields.totalGames) totalGames = parseInt(data.fields.totalGames.integerValue || data.fields.totalGames.doubleValue || "0");
+                    if (data.fields.currentStreak) currentStreak = parseInt(data.fields.currentStreak.integerValue || data.fields.currentStreak.doubleValue || "0");
+                    if (data.fields.maxStreak) maxStreak = parseInt(data.fields.maxStreak.integerValue || data.fields.maxStreak.doubleValue || "0");
+                    if (data.fields.name) name = data.fields.name.stringValue || "未命名玩家";
+                    if (data.fields.avatarId) avatarId = parseInt(data.fields.avatarId.integerValue || "0");
                 }
 
-                // 計算勝率 (四捨五入到小數點後第一位，乘上 100 方便存成百分比數字)
+                // 3. 結算新戰績
+                totalGames += 1;
+                if (isWin) {
+                    wins += 1;
+                    currentStreak += 1;
+                    if (currentStreak > maxStreak) maxStreak = currentStreak; // 破紀錄
+                } else {
+                    currentStreak = 0; // 輸了歸零
+                }
+
                 const winRate = Math.round((wins / totalGames) * 1000) / 10;
 
-                // 寫回資料庫
-                transaction.set(userRef, {
-                    wins: wins,
-                    totalGames: totalGames,
-                    winRate: winRate,
-                    currentStreak: currentStreak,
-                    maxStreak: maxStreak
-                }, { merge: true });
+                // 4. 用 PATCH 把資料強制寫入 (如果檔案不存在，PATCH 會自動幫你建立！)
+                const patchUrl = `${url}?updateMask.fieldPaths=wins&updateMask.fieldPaths=totalGames&updateMask.fieldPaths=winRate&updateMask.fieldPaths=currentStreak&updateMask.fieldPaths=maxStreak&updateMask.fieldPaths=name&updateMask.fieldPaths=avatarId`;
+                
+                return fetch(patchUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fields: {
+                            name: { stringValue: name },
+                            avatarId: { integerValue: avatarId },
+                            wins: { integerValue: wins },
+                            totalGames: { integerValue: totalGames },
+                            winRate: { doubleValue: winRate },
+                            currentStreak: { integerValue: currentStreak },
+                            maxStreak: { integerValue: maxStreak }
+                        }
+                    })
+                });
+            })
+            .then(res => {
+                if (!res.ok) throw new Error("寫入失敗");
+                return res.json();
+            })
+            .then(res => {
+                console.log("✅ 戰績成功寫入 Firebase！");
+                return res;
             });
-        }).catch((e: any) => cc.warn("[Firebase] 遊戲結果結算失敗", e));
     }
 }
