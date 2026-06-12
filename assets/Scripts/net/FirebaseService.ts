@@ -20,7 +20,13 @@ const firebaseConfig = {
 };
 // ⬆⬆⬆ ⬆⬆⬆
 
-export interface LeaderRow { name: string; wins: number; bestScore: number; avatarId: number;}
+export interface LeaderRow { 
+    name: string; 
+    avatarId: number;
+    winRate: number;       // 勝率 (0 ~ 100)
+    currentStreak: number; // 當前連勝
+    maxStreak: number;     // 最高連勝
+}
 
 export default class FirebaseService {
     private static inited = false;
@@ -113,60 +119,112 @@ export default class FirebaseService {
         ).catch((e: any) => cc.warn("[Firebase] 分數更新失敗", e));
     }
 
-    static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
-        console.log("【程式碼解法】改用 REST API 繞過 SDK 抓取排行榜...");
-        
-        // 直接對準你的 ssdfinal-c6446 專案資料庫發送請求
+   static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
+        console.log("【REST API】開始抓取勝率排行榜...");
         const projectId = "ssdfinal-c6446"; 
         const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
         
         return fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error("HTTP 狀態碼異常: " + res.status);
-                return res.json(); // 將回傳的文字轉成 JSON
-            })
+            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(data => {
-                console.log("REST API 成功抓到原始資料！", data);
-                
                 const out: LeaderRow[] = [];
-                
-                // 防呆：如果資料庫完全沒資料，data.documents 會是 undefined
                 if (data.documents) {
                     data.documents.forEach((doc: any) => {
                         if (doc.fields) {
-                            // 解析 Firestore 特殊的 JSON 結構
                             const name = doc.fields.name ? doc.fields.name.stringValue : "玩家";
                             
-                            // 處理數字 (Firestore 會根據存入方式判斷為 integerValue 或 doubleValue)
-                            let wins = 0;
-                            if (doc.fields.wins) {
-                                wins = doc.fields.wins.integerValue ? parseInt(doc.fields.wins.integerValue) : 
-                                      (doc.fields.wins.doubleValue ? parseFloat(doc.fields.wins.doubleValue) : 0);
-                            }
+                            // 解析數值防呆 (處理 integerValue 或 doubleValue)
+                            const avatarId = doc.fields.avatarId && doc.fields.avatarId.integerValue ? parseInt(doc.fields.avatarId.integerValue) : 0;
                             
-                            let bestScore = 0;
-                            if (doc.fields.bestScore) {
-                                bestScore = doc.fields.bestScore.integerValue ? parseInt(doc.fields.bestScore.integerValue) : 
-                                           (doc.fields.bestScore.doubleValue ? parseFloat(doc.fields.bestScore.doubleValue) : 0);
-                            }
-                            let avatarId = 0;
-                            if (doc.fields.avatarId) {
-                                avatarId = doc.fields.avatarId.integerValue ? parseInt(doc.fields.avatarId.integerValue) : 0;
-                            }
-                            out.push({ name, wins, bestScore, avatarId});
+                            const winRate = doc.fields.winRate ? 
+                                parseFloat(doc.fields.winRate.doubleValue || doc.fields.winRate.integerValue || "0") : 0;
+                                
+                            const currentStreak = doc.fields.currentStreak && doc.fields.currentStreak.integerValue ? 
+                                parseInt(doc.fields.currentStreak.integerValue) : 0;
+                                
+                            const maxStreak = doc.fields.maxStreak && doc.fields.maxStreak.integerValue ? 
+                                parseInt(doc.fields.maxStreak.integerValue) : 0;
+
+                            out.push({ name, avatarId, winRate, currentStreak, maxStreak });
                         }
                     });
                 }
                 
-                // 因為 REST API 預設沒有排序，我們在前端手動按勝場 (wins) 由大到小排序
-                out.sort((a, b) => b.wins - a.wins);
+                // 排行榜權重：優先看【勝率】由高到低，若勝率相同則看【最高連勝】
+                out.sort((a, b) => {
+                    if (b.winRate === a.winRate) return b.maxStreak - a.maxStreak;
+                    return b.winRate - a.winRate;
+                });
                 
-                // 回傳前 N 名 (依照傳入的 limit)
                 return out.slice(0, limit);
             })
-            .catch(err => {
-                console.error("REST API 抓取徹底失敗：", err);
-                return [];
+            .catch(err => { console.error(err); return []; });
+    }
+
+   static updateGameResult(isWin: boolean): Promise<any> {
+        const u = this.user;
+        if (!this.isReady() || !u) return Promise.resolve();
+
+        console.log("【REST API】準備結算戰績... 本局獲勝：", isWin);
+        const projectId = "ssdfinal-c6446";
+        const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${u.uid}`;
+
+        // 1. 先去抓舊資料
+        return fetch(url)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                let wins = 0, totalGames = 0, currentStreak = 0, maxStreak = 0;
+                let name = "未命名玩家";
+                let avatarId = 0;
+
+                // 2. 如果資料庫有舊資料，就讀出來
+                if (data && data.fields) {
+                    if (data.fields.wins) wins = parseInt(data.fields.wins.integerValue || data.fields.wins.doubleValue || "0");
+                    if (data.fields.totalGames) totalGames = parseInt(data.fields.totalGames.integerValue || data.fields.totalGames.doubleValue || "0");
+                    if (data.fields.currentStreak) currentStreak = parseInt(data.fields.currentStreak.integerValue || data.fields.currentStreak.doubleValue || "0");
+                    if (data.fields.maxStreak) maxStreak = parseInt(data.fields.maxStreak.integerValue || data.fields.maxStreak.doubleValue || "0");
+                    if (data.fields.name) name = data.fields.name.stringValue || "未命名玩家";
+                    if (data.fields.avatarId) avatarId = parseInt(data.fields.avatarId.integerValue || "0");
+                }
+
+                // 3. 結算新戰績
+                totalGames += 1;
+                if (isWin) {
+                    wins += 1;
+                    currentStreak += 1;
+                    if (currentStreak > maxStreak) maxStreak = currentStreak; // 破紀錄
+                } else {
+                    currentStreak = 0; // 輸了歸零
+                }
+
+                const winRate = Math.round((wins / totalGames) * 1000) / 10;
+
+                // 4. 用 PATCH 把資料強制寫入 (如果檔案不存在，PATCH 會自動幫你建立！)
+                const patchUrl = `${url}?updateMask.fieldPaths=wins&updateMask.fieldPaths=totalGames&updateMask.fieldPaths=winRate&updateMask.fieldPaths=currentStreak&updateMask.fieldPaths=maxStreak&updateMask.fieldPaths=name&updateMask.fieldPaths=avatarId`;
+                
+                return fetch(patchUrl, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fields: {
+                            name: { stringValue: name },
+                            avatarId: { integerValue: avatarId },
+                            wins: { integerValue: wins },
+                            totalGames: { integerValue: totalGames },
+                            winRate: { doubleValue: winRate },
+                            currentStreak: { integerValue: currentStreak },
+                            maxStreak: { integerValue: maxStreak }
+                        }
+                    })
+                });
+            })
+            .then(res => {
+                if (!res.ok) throw new Error("寫入失敗");
+                return res.json();
+            })
+            .then(res => {
+                console.log("✅ 戰績成功寫入 Firebase！");
+                return res;
             });
     }
 }
