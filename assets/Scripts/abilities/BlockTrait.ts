@@ -36,6 +36,28 @@ export default class BlockTrait extends cc.Component {
             return;
         }
 
+        const myLocal = this.node.getPosition();
+        const threshold = GRID.CELL_SIZE * 1.25;  // ~50px：抓得到正向鄰居（40px）、排除對角（~56px）
+
+        const candidates: Health[] = [];
+        root.getComponentsInChildren(Health).forEach(hp => {
+            if (!hp || !hp.node || !hp.node.isValid) return;
+            candidates.push(hp);
+        });
+
+        for (const hp of candidates) {
+            if (!hp || !hp.node || !hp.node.isValid) continue;
+
+            const otherLocal = hp.node.getPosition();
+            const dx = otherLocal.x - myLocal.x;
+            const dy = otherLocal.y - myLocal.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist <= threshold) {
+                this.healTargets.push(hp);
+            }
+        }
+
         cc.log(`[BlockTrait] ${this.node.name} regen=${this.regenPerSecond} → 回血對象 ${this.healTargets.length} 個`);
     }
 
