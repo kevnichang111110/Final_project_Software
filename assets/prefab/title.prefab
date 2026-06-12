@@ -13,7 +13,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "Body3",
+    "_name": "Wheel2",
     "_objFlags": 0,
     "_parent": null,
     "_children": [],
@@ -24,22 +24,10 @@
       },
       {
         "__id__": 3
-      },
-      {
-        "__id__": 4
-      },
-      {
-        "__id__": 5
-      },
-      {
-        "__id__": 6
-      },
-      {
-        "__id__": 7
       }
     ],
     "_prefab": {
-      "__id__": 8
+      "__id__": 4
     },
     "_opacity": 255,
     "_color": {
@@ -63,8 +51,8 @@
       "__type__": "TypedArray",
       "ctor": "Float64Array",
       "array": [
-        487.352,
-        200.556,
+        0,
+        -40,
         0,
         0,
         0,
@@ -84,8 +72,8 @@
     "_skewX": 0,
     "_skewY": 0,
     "_is3DNode": false,
-    "_groupIndex": 1,
-    "groupIndex": 1,
+    "_groupIndex": 2,
+    "groupIndex": 2,
     "_id": ""
   },
   {
@@ -104,7 +92,7 @@
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
     "_spriteFrame": {
-      "__uuid__": "0d090197-f6dc-4dcc-9f5c-a3ecb4ec5c94"
+      "__uuid__": "477308b7-691e-4f0b-b269-691f11b59243"
     },
     "_type": 0,
     "_sizeMode": 0,
@@ -143,80 +131,6 @@
     "enabledContactListener": true,
     "bullet": false,
     "awakeOnLoad": true,
-    "_id": ""
-  },
-  {
-    "__type__": "cc.PhysicsBoxCollider",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "tag": 0,
-    "_density": 1,
-    "_sensor": false,
-    "_friction": 0.2,
-    "_restitution": 0,
-    "body": null,
-    "_offset": {
-      "__type__": "cc.Vec2",
-      "x": 0,
-      "y": 0
-    },
-    "_size": {
-      "__type__": "cc.Size",
-      "width": 40,
-      "height": 40
-    },
-    "_id": ""
-  },
-  {
-    "__type__": "e6cb5CYYIFGpq0vLG27YUYU",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "partType": 0,
-    "wheelMotorMultiplier": 1,
-    "weaponMode": 0,
-    "_id": ""
-  },
-  {
-    "__type__": "33ce5GoCvJHBqbLT5BI5CpD",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "maxHP": 100,
-    "hitSound": {
-      "__uuid__": "cd9852f5-6759-4c63-9ed2-21db1a5445e0"
-    },
-    "dieSound": {
-      "__uuid__": "b8f117b5-e4b7-4d7d-8080-9b972ae4ed0b"
-    },
-    "showDebugHPBar": true,
-    "debugBarWidth": 34,
-    "debugBarHeight": 5,
-    "debugBarOffsetY": 0,
-    "hitShowDuration": 1.5,
-    "idleAlpha": 0.35,
-    "_id": ""
-  },
-  {
-    "__type__": "4cd7dKVaWFMw5eJ5bIE7Uh7",
-    "_name": "",
-    "_objFlags": 0,
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "damageMultiplier": 1,
-    "regenPerSecond": 50,
     "_id": ""
   },
   {
