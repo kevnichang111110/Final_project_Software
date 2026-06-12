@@ -135,7 +135,7 @@ export default class ResultManager extends cc.Component {
         if (this.textLines.length >= 2) {
             const scoreLabel = this.textLines[1].getComponent(cc.Label);
             if (scoreLabel) {
-                scoreLabel.string = `最終比分：玩家 ${GameManager.playerWins} - ${GameManager.botWins} 電腦`;
+                scoreLabel.string = `最終比分：${GameManager.playerWins} - ${GameManager.botWins} `;
             }
         }
 
