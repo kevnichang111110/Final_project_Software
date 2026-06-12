@@ -228,39 +228,67 @@ export default class CarBuilder {
         }
     }
 
-    // 零件死亡 → 爆炸特效、斷開自身與連向自己的關節、改成 default 群組、給個向上彈的力，淡出後銷毀
+    // 零件死亡 → 爆炸特效、斷開關節、脫離車體、物理掉落，最後淡出銷毀
     static disjointPart(node: cc.Node) {
-        // 在零件原本位置炸一下（特效掛在父層，零件之後被銷毀也不影響）
+        if (!node || !node.isValid) return;
+
+        // 1. 在零件原本位置炸一下（特效掛在父層，零件之後被銷毀也不影響）
         const parent = node.parent;
+        let worldPos = cc.v2(0, 0);
         if (parent) {
-            const worldPos = node.convertToWorldSpaceAR(cc.v2(0, 0));
+            worldPos = node.convertToWorldSpaceAR(cc.v2(0, 0));
             const size = Math.max(node.width, node.height) || 60;
             Explosion.spawn(parent, worldPos, size);
             // 零件擊破：固定給一發強回饋（大震 + hitstop + 火花），讓「破壞」手感分明
             HitFeedback.trigger(HITFX.HITSTOP_DAMAGE, worldPos);
         }
 
-        node.getComponents(cc.Joint).forEach(j => j.destroy());
-
-        if (parent) {
-            parent.getComponentsInChildren(cc.Joint).forEach(j => {
-                if (j.connectedBody && j.connectedBody.node === node) j.destroy();
-            });
+        // 2. 安全斷開自身與連向自己的關節 (加入 try-catch 防止報錯中斷後續邏輯)
+        try {
+            node.getComponents(cc.Joint).forEach(j => j.destroy());
+            if (parent) {
+                parent.getComponentsInChildren(cc.Joint).forEach(j => {
+                    if (j.connectedBody && j.connectedBody.node === node) j.destroy();
+                });
+            }
+        } catch (e) {
+            cc.warn(`[CarBuilder] 斷開關節時發生錯誤:`, e);
         }
 
-        node.group = GROUP.DEFAULT;
+        // 將零件移出車體 (playerRoot)，丟到 Canvas 底下。
+        // 這樣 AirPhysics 就不會再把它當成車子的一部分把它吸回去！
+        const canvas = cc.find("Canvas") || cc.director.getScene();
+        if (canvas) {
+            node.parent = canvas;
+            node.setPosition(canvas.convertToNodeSpaceAR(worldPos));
+        }
 
+        // 改成 default 群組 (不再是 PLAYER_PART)
+        node.group = GROUP.DEFAULT; 
+
+        // 強制切換為 Dynamic 並喚醒，打破 AirPhysics 在空中賦予的 Kinematic 定格狀態
         const rb = node.getComponent(cc.RigidBody);
         if (rb) {
             rb.type = cc.RigidBodyType.Dynamic;
-            rb.awake = true; // 喚醒物理引擎計算
+            rb.awake = true;
         }
 
-        // 爆炸後立刻消失，不做上拋、不做淡化。
-        // 延遲一個極短時間再銷毀，是為了避開「在物理碰撞回呼當下直接 destroy」可能造成的 Box2D 崩潰。
+        // 讓方塊掉落地面滾動 1.5 秒後，同時縮小與變透明，最後銷毀
         cc.tween(node)
-            .delay(0.02)
-            .call(() => { if (node.isValid) node.destroy(); })
+            .delay(1.5)
+            .parallel(
+                cc.tween().to(0.5, { opacity: 0 }),
+                cc.tween().to(0.5, { scale: 0 })
+            )
+            .call(() => {
+                if (node.isValid) node.destroy();
+            })
             .start();
+
+        setTimeout(() => {
+            if (node && node.isValid) {
+                node.destroy();
+            }
+        }, 2500);
     }
 }
