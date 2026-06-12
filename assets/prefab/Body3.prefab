@@ -216,7 +216,7 @@
     },
     "_enabled": true,
     "damageMultiplier": 1,
-    "regenPerSecond": 50,
+    "regenPerSecond": 2,
     "_id": ""
   },
   {
