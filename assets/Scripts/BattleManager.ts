@@ -492,7 +492,28 @@ export default class BattleManager extends cc.Component implements INetBattle {
             this.broadcastIfHost(dt);
         }
 
+        this.clampCarVelocities();
         this.updateDebugDraw();
+    }
+
+    // 夾住車身零件線速度上限，避免高速撞擊把焊接瞬間撐開（看起來像散開又彈回）
+    private clampCarVelocities() {
+        const cap = PHYSICS.MAX_PART_SPEED;
+        if (cap <= 0) return;
+        const cap2 = cap * cap;
+        const clampRoot = (root: cc.Node | null) => {
+            if (!root) return;
+            root.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+                const v = rb.linearVelocity;
+                const m2 = v.x * v.x + v.y * v.y;
+                if (m2 > cap2) {
+                    const k = cap / Math.sqrt(m2);
+                    rb.linearVelocity = cc.v2(v.x * k, v.y * k);
+                }
+            });
+        };
+        clampRoot(this.playerRoot);
+        clampRoot(this.botRoot);
     }
 
     private broadcastIfHost(dt: number) {
@@ -706,7 +727,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const rb = node.getComponent(cc.RigidBody);
         if (rb) {
             rb.type = cc.RigidBodyType.Dynamic;
-            rb.linearVelocity = cc.v2(0, -300);
+            rb.linearVelocity = cc.v2(0, -180);   // 降低落下速度，減少砸到車身把零件撐開的衝擊
             rb.angularVelocity = (Math.random() - 0.5) * 500;
         }
         if (this.mode === "HOST" && this.net) this.net.registerDebris(node, idx);
