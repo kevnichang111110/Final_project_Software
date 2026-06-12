@@ -69,6 +69,12 @@ export default class OnlineBattleManager extends cc.Component {
     private debrisNodes: { node: cc.Node, p: number }[] = [];
     private p2ShownFight: boolean = false;
 
+    // ===== 暫時診斷用（定位問題後移除）=====
+    private debugLabel: cc.Label | null = null;
+    private txCount: number = 0;   // 主機已送出快照數
+    private rxCount: number = 0;   // P2 已套用快照數
+    private hostConflict: boolean = false; // 偵測到場上有第二個主機
+
     onLoad() {
         // 1. 告訴引擎：失去焦點時不要自動暫停
         (cc.game as any).pauseOnBlur = false;
@@ -90,7 +96,8 @@ export default class OnlineBattleManager extends cc.Component {
         // 只有主機跑傷害判定；P2 是純畫面端，關掉傷害（否則兩端各自扣血會分歧）
         Health.activeInBattle = OnlineRuntime.isHost();
         const physics = cc.director.getPhysicsManager();
-        physics.enabled = true;
+        // P2 純畫面端：整個物理引擎關掉，保證零計算（節點仍可用 setPosition 定位，渲染不受影響）
+        physics.enabled = OnlineRuntime.isHost();
         (physics as any).enabledContactListener = true;
         physics.enabledAccumulator = true;
 
@@ -230,6 +237,9 @@ export default class OnlineBattleManager extends cc.Component {
             this.sendMyInput();
         }
 
+        // 暫時診斷 HUD（兩端每幀更新）
+        this.updateDebugHud();
+
         // 非主機（P2）= 純畫面端：本地不跑任何物理/邏輯，畫面全由 onSyncReceived 驅動
         if (!OnlineRuntime.isHost()) return;
 
@@ -365,6 +375,7 @@ export default class OnlineBattleManager extends cc.Component {
             debris: this.collectDebris()
         };
         OnlineRuntime.room.send("sync", snapshot);
+        this.txCount++;
     }
 
     // 逐零件序列化：以 partsMap 的 grid key 標識，傳相對 root 的本地座標（兩端 root 佈局相同）
@@ -401,7 +412,14 @@ export default class OnlineBattleManager extends cc.Component {
     // ---- 純畫面端（P2）：套用主機快照 ----
 
     private onSyncReceived(msg: any) {
-        if (OnlineRuntime.isHost() || !msg) return; // 主機自己不套用快照
+        if (!msg) return;
+        // 偵測雙主機：自己是 host 卻收到別人送的 sync → 場上有第二個主機（多半是伺服器把兩台都配成 P1）
+        if (OnlineRuntime.isHost()) {
+            this.hostConflict = true;
+            this.updateDebugHud();
+            return; // 主機自己不套用快照
+        }
+        this.rxCount++;
         this.applyMeta(msg.meta);
         if (msg.cars) {
             this.applyCarParts(this.p1Car, msg.cars.p1);
@@ -686,7 +704,37 @@ export default class OnlineBattleManager extends cc.Component {
         const canvas = cc.find("Canvas"); if (!canvas) return;
         this.p1ScoreLabel = this.makeCornerLabel(canvas, "P1_SCORE", true, cc.color(120, 200, 255));
         this.p2ScoreLabel = this.makeCornerLabel(canvas, "P2_SCORE", false, cc.color(255, 150, 90));
+        this.createDebugHud(canvas);
         this.updateScoreboard();
+    }
+
+    // 暫時診斷 HUD（畫面上方置中），定位問題後移除
+    private createDebugHud(canvas: cc.Node) {
+        const node = new cc.Node("DEBUG_HUD");
+        node.parent = canvas; node.zIndex = 200;
+        const label = node.addComponent(cc.Label);
+        label.fontSize = 24; label.lineHeight = 28;
+        label.horizontalAlign = cc.Label.HorizontalAlign.CENTER;
+        const widget = node.addComponent(cc.Widget);
+        widget.isAlignTop = true; widget.top = 70;
+        widget.isAlignHorizontalCenter = true;
+        widget.updateAlignment();
+        this.debugLabel = label;
+        this.updateDebugHud();
+    }
+
+    private updateDebugHud() {
+        if (!this.debugLabel) return;
+        const host = OnlineRuntime.isHost();
+        if (this.hostConflict) {
+            this.debugLabel.string = "CONFLICT: 2 HOSTS! (seat 兩台都 P1?)";
+            this.debugLabel.node.color = cc.Color.RED;
+            return;
+        }
+        this.debugLabel.node.color = host ? cc.color(120, 255, 120) : cc.color(255, 220, 120);
+        this.debugLabel.string = host
+            ? `SEAT=${OnlineRuntime.mySeat} HOST=Y started=${this.isBattleStarted ? "Y" : "N"} tx=${this.txCount}`
+            : `SEAT=${OnlineRuntime.mySeat} HOST=N started=${this.p2ShownFight ? "Y" : "N"} rx=${this.rxCount}`;
     }
 
     private makeCornerLabel(canvas: cc.Node, name: string, left: boolean, color: cc.Color): cc.Label {
