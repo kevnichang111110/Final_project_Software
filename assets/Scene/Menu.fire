@@ -4009,8 +4009,8 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "New Label",
-    "_objFlags": 0,
+    "_name": "Label",
+    "_objFlags": 512,
     "_parent": {
       "__id__": 81
     },
@@ -4032,8 +4032,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 59.3,
-      "height": 50.4
+      "width": 100,
+      "height": 40
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -4067,7 +4067,7 @@
     "_is3DNode": false,
     "_groupIndex": 0,
     "groupIndex": 0,
-    "_id": "6aJ/zxyapDv7ZgoxgBmLDZ"
+    "_id": "5d8xoEXuVNUJEn+5cn92wZ"
   },
   {
     "__type__": "cc.Label",
@@ -4084,11 +4084,11 @@
     ],
     "_srcBlendFactor": 770,
     "_dstBlendFactor": 771,
-    "_string": "sign up",
-    "_N$string": "sign up",
+    "_string": "Sign up",
+    "_N$string": "Sign up",
     "_fontSize": 20,
     "_lineHeight": 40,
-    "_enableWrapText": true,
+    "_enableWrapText": false,
     "_N$file": {
       "__uuid__": "fee450e1-2173-41a1-b46a-5d20424f0a6f"
     },
@@ -4100,9 +4100,9 @@
     "_N$horizontalAlign": 1,
     "_N$verticalAlign": 1,
     "_N$fontFamily": "Arial",
-    "_N$overflow": 0,
-    "_N$cacheMode": 0,
-    "_id": "dfszc01QBLcJ8mQ7+q6eeg"
+    "_N$overflow": 1,
+    "_N$cacheMode": 1,
+    "_id": "5aUhvIMJxM04Y0Fy/tgd7k"
   },
   {
     "__type__": "cc.Sprite",
@@ -8877,9 +8877,7 @@
     "settingsPrefab": {
       "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
     },
-    "bgmClip": {
-      "__uuid__": "7c6c4d11-d3e1-4c30-bc3c-46b48ce28673"
-    },
+    "bgmClip": null,
     "leaderboardPanel": {
       "__id__": 91
     },
