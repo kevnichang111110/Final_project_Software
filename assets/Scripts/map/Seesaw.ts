@@ -41,7 +41,6 @@ export default class Seesaw extends cc.Component {
     private joint: cc.RevoluteJoint | null = null;
     private fixedPivotWorld: cc.Vec2 | null = null;   // 支點出生時的世界座標，update 每幀硬鎖回此點
 
-    // 在 start 建立（確保此時物理系統已由 BattleManager 啟用）
     start() {
         this.buildVisual();
 
@@ -49,6 +48,8 @@ export default class Seesaw extends cc.Component {
         if (!this.rb) { cc.warn("[Seesaw] 板子需要 RigidBody(Dynamic)"); return; }
         this.rb.type = cc.RigidBodyType.Dynamic;
         this.rb.angularDamping = this.angularDamp;
+
+        this.rb.bullet = true;
 
         if (!this.node.parent) { cc.warn("[Seesaw] 板子需要有父節點"); return; }
 
@@ -148,19 +149,19 @@ export default class Seesaw extends cc.Component {
 
         // 嚴格固定支點：RevoluteJoint 是軟約束，被車重撞時支點可能產生微小位移漂移。
         // 翹翹板本來就不該平移，故每幀清掉線速度，並把支點硬鎖回出生世界座標（旋轉仍自由）。
-        if (this.fixedPivotWorld && this.node.parent) {
-            this.rb.linearVelocity = cc.v2(0, 0);
-            const cur = this.node.convertToWorldSpaceAR(this.pivotOffset);
-            const dx = this.fixedPivotWorld.x - cur.x;
-            const dy = this.fixedPivotWorld.y - cur.y;
-            if (dx * dx + dy * dy > 1e-4) {
-                const nodeWorld = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
-                const target = cc.v2(nodeWorld.x + dx, nodeWorld.y + dy);
-                this.node.setPosition(this.node.parent.convertToNodeSpaceAR(target));
-                // 把節點 transform 推進物理世界（Cocos 2.x：型別定義缺，故 as any）
-                const anyRb = this.rb as any;
-                if (anyRb.syncPosition) anyRb.syncPosition(false);
-            }
-        }
+        // if (this.fixedPivotWorld && this.node.parent) {
+        //     this.rb.linearVelocity = cc.v2(0, 0);
+        //     const cur = this.node.convertToWorldSpaceAR(this.pivotOffset);
+        //     const dx = this.fixedPivotWorld.x - cur.x;
+        //     const dy = this.fixedPivotWorld.y - cur.y;
+        //     if (dx * dx + dy * dy > 1e-4) {
+        //         const nodeWorld = this.node.convertToWorldSpaceAR(cc.v2(0, 0));
+        //         const target = cc.v2(nodeWorld.x + dx, nodeWorld.y + dy);
+        //         this.node.setPosition(this.node.parent.convertToNodeSpaceAR(target));
+        //         // 把節點 transform 推進物理世界（Cocos 2.x：型別定義缺，故 as any）
+        //         const anyRb = this.rb as any;
+        //         if (anyRb.syncPosition) anyRb.syncPosition(false);
+        //     }
+        // }
     }
 }
