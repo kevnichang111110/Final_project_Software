@@ -9059,7 +9059,9 @@
     "settingsPrefab": {
       "__uuid__": "dfef76b1-1877-4351-8e78-a1d6ae3ce4de"
     },
-    "bgmClip": null,
+    "bgmClip": {
+      "__uuid__": "7c6c4d11-d3e1-4c30-bc3c-46b48ce28673"
+    },
     "leaderboardPanel": {
       "__id__": 95
     },
