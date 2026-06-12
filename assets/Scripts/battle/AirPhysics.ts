@@ -74,9 +74,10 @@ export default class AirPhysics {
     // fromX,fromY = 移動前質心（掃掠射線起點），cos/sin = 當前車身旋轉。
     // 逐零件：先看候選位置是否出界，再從「移動前 → 候選」掃一條射線並多延伸半個零件尺寸，
     // 讓零件「邊緣」停在障礙表面外，而不是中心點直接穿進去。只攔地面/邊界群組，無視子彈與另一台車。
+    // 用 aliveBodies() 確保只檢查真正存活的零件
     private blocked(candX: number, candY: number, fromX: number, fromY: number, cos: number, sin: number): boolean {
         const pm = cc.director.getPhysicsManager();
-        for (const rb of this.livingBodies()) {
+        for (const rb of this.aliveBodies()) {
             const p = this.parts.get(rb.node);
             if (!p) continue;
             const rx = p.ox * cos - p.oy * sin;
@@ -132,9 +133,24 @@ export default class AirPhysics {
         return out;
     }
 
+    // 只返回真正存活的零件（group 正確且 HP > 0）
+    private aliveBodies(): cc.RigidBody[] {
+        const out: cc.RigidBody[] = [];
+        if (!this.root || !this.root.isValid) return out;
+        this.root.getComponentsInChildren(cc.RigidBody).forEach(rb => {
+            const nd = rb.node;
+            if (!nd || !nd.isValid) return;
+            if (nd.group !== this.partGroup) return;
+            const health = nd.getComponent(cc.Component) as any;
+            if (health && typeof health.currentHP === "number" && health.currentHP <= 0) return;
+            out.push(rb);
+        });
+        return out;
+    }
+
     private enterAir() {
         const core = this.coreNode;
-        const bodies = this.livingBodies();
+        const bodies = this.aliveBodies();  // 只取真正存活的零件
         if (!core || !core.isValid || bodies.length === 0) { this.active = false; return; }
 
         // 用核心「目前位姿」+ 標準版型，重建每個零件的「正確（未散架）世界位置」。
@@ -175,7 +191,11 @@ export default class AirPhysics {
         this.parts.clear();
         for (const rb of bodies) {
             const nd = rb.node;
-            const pr = proper.get(nd)!;
+            if (!nd || !nd.isValid) continue;
+            const pr = proper.get(nd);
+            if (!pr) continue;
+            const health = nd.getComponent(cc.Component) as any;
+            if (health && typeof health.currentHP === "number" && health.currentHP <= 0) continue;
             this.parts.set(nd, { ox: pr.wx - this.com.x, oy: pr.wy - this.com.y, angle0: pr.ang, type0: rb.type });
             rb.type = cc.RigidBodyType.Kinematic;
             rb.enabledContactListener = true;   // 切 type 會重置碰撞監聽，補開回來，否則出空中後就收不到傷害
@@ -220,10 +240,14 @@ export default class AirPhysics {
         this.comVel.x = velX; this.comVel.y = velY;
 
         // 剛體擺放：整車繞質心旋轉 rot 度（零件為 Kinematic，只跟著 transform 走）
-        for (const rb of this.livingBodies()) {
+        // 用 aliveBodies() 確保只處理真正存活的零件，並在枚舉時做防禦性檢查
+        for (const rb of this.aliveBodies()) {
             const nd = rb.node;
+            if (!nd || !nd.isValid) continue;
             const p = this.parts.get(nd);
             if (!p) continue;
+            const health = nd.getComponent(cc.Component) as any;
+            if (health && typeof health.currentHP === "number" && health.currentHP <= 0) continue;
             const rx = p.ox * cos - p.oy * sin;
             const ry = p.ox * sin + p.oy * cos;
             const world = cc.v2(this.com.x + rx, this.com.y + ry);
@@ -249,6 +273,10 @@ export default class AirPhysics {
 
             // 如果該零件群組已經不是車體不要再把它當作車體的一部分還原
             if (nd.group !== this.partGroup) return;
+
+            // 新增：檢查 HP，確保零件真的活著才還原
+            const health = nd.getComponent(cc.Component) as any;
+            if (health && typeof health.currentHP === "number" && health.currentHP <= 0) return;
 
             const rb = nd.getComponent(cc.RigidBody);
             if (!rb) return;
