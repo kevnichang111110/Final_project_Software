@@ -235,6 +235,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
     }
 
     // 兩端都收到伺服器廣播的結算 → 更新比分、顯示結果、倒數回商店/選單
+    // 兩端都收到伺服器廣播的結算 → 更新比分、顯示結果、倒數回商店/選單
     private onRoundResult(msg: any) {
         if (this.isGameOver && this.sentRoundOver) return;
         this.isGameOver = true;
@@ -250,13 +251,24 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const winner = msg && msg.winner === "P2" ? "P2" : "P1";
         const iWon = winner === OnlineRuntime.mySeat;
         const matchOver = !!(msg && msg.matchOver);
+        
         if (this.resultLabel) {
             this.resultLabel.node.active = true;
             this.resultLabel.string = matchOver ? (iWon ? "VICTORY" : "DEFEAT") : `${winner} WIN!`;
             this.resultLabel.node.color = iWon ? cc.Color.YELLOW : cc.Color.WHITE;
         }
+        
         this.scheduleOnce(() => {
-            if (matchOver) { OnlineRuntime.clearMatch(); cc.director.loadScene(OnlineRuntime.menuSceneName); }
+            if (matchOver) { 
+                // 【關鍵補強】在跳轉場景前，把「多人模式」和「本地是否獲勝」的資料寫進去
+                GameManager.isMultiplayerMode = true;
+                GameManager.isLocalPlayerWinner = iWon; 
+                
+                OnlineRuntime.clearMatch(); 
+                
+                // 維持你的聰明做法，跳轉到設定好的 menuSceneName (也就是 Result)
+                cc.director.loadScene(OnlineRuntime.menuSceneName); 
+            }
             else cc.director.loadScene("onlineShop");
         }, 3);
     }
@@ -796,14 +808,13 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
             || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
 
-        let target = "onlineShop";
+        let target = "onlineShop"; // 依你的原本設定維持 onlineShop 或 Shop
         if (finished) {
-            // 注意：Firebase 寫入的邏輯我們已經移到 ResultManager 去做了，這裡可以刪掉原本的 incrementWins
+            // 【關鍵修改】單機模式整場打完時，設定單機專用的視角變數
+            GameManager.isMultiplayerMode = false;
+            GameManager.isLocalPlayerWinner = GameManager.playerWins > GameManager.botWins;
             
-            // 【修改這裡】比賽結束，不要回 Menu，改去結算場景
             target = "Result"; 
-            
-            // 注意：不要在這裡呼叫 GameManager.resetAllData()，不然結算畫面會抓不到玩家車子的資料，把重置留在 ResultScene 的返回按鈕裡。
         } else if (FLOW && FLOW.USE_SCRAMBLE) { 
             target = FLOW.SCRAMBLE_SCENE;
         }

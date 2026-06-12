@@ -11,6 +11,7 @@ export interface GridPart {
 export enum GameMode {
     VsBot = 0,          // 玩家 vs 電腦
     LocalTwoPlayer = 1, // 本機雙人
+    // (如果之後隊友需要，也可以在這裡補上 OnlineMultiplayer = 2)
 }
 
 export default class GameManager {
@@ -23,6 +24,13 @@ export default class GameManager {
 
     // 由 Menu 設定；預設 vs Bot，讓單人流程開箱即用
     public static gameMode: GameMode = GameMode.VsBot;
+
+    // ==========================================
+    // 【新增】線上多人連線專用視角變數
+    // ==========================================
+    public static isMultiplayerMode: boolean = false; // 是否為線上連線模式
+    public static isLocalPlayerWinner: boolean = false; // 這台電腦的玩家是否為最終贏家
+    // ==========================================
 
     // 搶奪階段搶到的道具（道具名稱需對應到 allPrefabs 裡的 prefab 名稱）
     // P1 = 你操作的玩家、P2 = 本機第二位玩家、BOT = 電腦
@@ -38,7 +46,6 @@ export default class GameManager {
             { gridX: 0, gridY: 1, partName: "Wheel1" },
             { gridX: 3, gridY: 0, partName: "Wheel1" }
         ],
-
         [
             { gridX: 1, gridY: 1, partName: "Body1" },
             { gridX: 2, gridY: 1, partName: "Core" },
@@ -71,6 +78,11 @@ export default class GameManager {
         this.botWins = 0;
         this.playerCarGrid = [];
         this.claimedTools = { P1: [], P2: [], BOT: [] };
+        
+        // 【新增】清空多人連線的狀態，避免影響下一局
+        this.isMultiplayerMode = false;
+        this.isLocalPlayerWinner = false;
+        
         console.log("Game Data Reset");
     }
 }

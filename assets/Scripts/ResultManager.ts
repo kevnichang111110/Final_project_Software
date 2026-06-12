@@ -18,8 +18,14 @@ export default class ResultManager extends cc.Component {
     private isWin: boolean = false; 
 
     onLoad() {
-        // 1. 判斷最終輸贏：假設玩家勝場較多就是贏
-        this.isWin = GameManager.playerWins > GameManager.botWins;
+        // === 🚀 1. 判斷最終輸贏 (升級相容多人連線版) ===
+        if (GameManager.isMultiplayerMode) {
+            // 如果是多人連線，直接讀取隊友設定好的「本地玩家是否獲勝」
+            this.isWin = GameManager.isLocalPlayerWinner;
+        } else {
+            // 如果是單機模式，維持你原本的判斷邏輯
+            this.isWin = GameManager.playerWins > GameManager.botWins;
+        }
 
         // 2. 初始化：關閉所有特效與文字
         if (this.fireworkParticle) this.fireworkParticle.node.active = false;
