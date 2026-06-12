@@ -16,6 +16,9 @@ export interface OnlineInputState {
 export type OnlineSeat = "P1" | "P2";
 
 export default class OnlineRuntime {
+    public static p1Name: string = "P1";
+    public static p2Name: string = "P2";
+
     public static serverUrl: string = "ws://localhost:2567";
     public static room: any = null;
     public static roomId: string = "";
@@ -60,5 +63,7 @@ export default class OnlineRuntime {
         this.p2Wins = 0;
         this.round = 1;
         this.seed = 0;
+        this.p1Name = "P1";
+        this.p2Name = "P2";
     }
 }

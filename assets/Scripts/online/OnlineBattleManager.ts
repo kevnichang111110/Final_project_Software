@@ -151,7 +151,11 @@ export default class OnlineBattleManager extends cc.Component {
             side: "PLAYER",
             root: this.p1Root,
             prefabs: this.allPrefabs,
-            onCoreDie: () => this.reportRoundOver("P2")
+            onCoreDie: () => {
+                if (OnlineRuntime.isHost()) {
+                    this.reportRoundOver("P2");
+                }
+            }
         });
 
         this.p2Car = CarBuilder.build({
@@ -160,7 +164,11 @@ export default class OnlineBattleManager extends cc.Component {
             side: "BOT",
             root: this.p2Root,
             prefabs: this.allPrefabs,
-            onCoreDie: () => this.reportRoundOver("P1")
+            onCoreDie: () => {
+                if (OnlineRuntime.isHost()) {
+                    this.reportRoundOver("P1");
+                }
+            }
         });
 
         // 【修正地圖同步】：徹底移除 cc.math.seed
@@ -554,8 +562,13 @@ export default class OnlineBattleManager extends cc.Component {
     }
 
     private updateScoreboard() {
-        if (this.p1ScoreLabel) this.p1ScoreLabel.string = `P1  ${OnlineRuntime.p1Wins}`;
-        if (this.p2ScoreLabel) this.p2ScoreLabel.string = `${OnlineRuntime.p2Wins}  P2`;
+        if (this.p1ScoreLabel) {
+            this.p1ScoreLabel.string = `${OnlineRuntime.p1Name}  ${OnlineRuntime.p1Wins}`;
+        }
+        
+        if (this.p2ScoreLabel) {
+            this.p2ScoreLabel.string = `${OnlineRuntime.p2Wins}  ${OnlineRuntime.p2Name}`;
+        }
     }
 
     private onKeyDown(event: cc.Event.EventKeyboard) {
