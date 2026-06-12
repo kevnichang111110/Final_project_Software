@@ -310,6 +310,8 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (this.mode === "LOCAL") this.setupLocalCars();
         else this.setupOnlineCars();
 
+        this.startAllPhysics(false)
+
         this.startCountdownTimer = 0;
         this.startCountdownValue = BATTLE.COUNTDOWN_FROM;
         if (this.countdownLabel) {
@@ -411,6 +413,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         if (!this.botRoot) return;
         const totalRounds = GameManager.playerWins + GameManager.botWins;
         const botIndex = totalRounds <= 1 ? 0 : (totalRounds <= 3 ? 1 : 2);
+        const airBoundary = this.mapLoader ? this.mapLoader.getBoundary() : null;
 
         if (GameManager.botConfigs && GameManager.botConfigs.length > botIndex) {
             this.botCar = CarBuilder.build({
@@ -421,7 +424,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
                 prefabs: this.allPrefabs,
                 onCoreDie: (winner) => this.handleGameOver(winner),
             });
-            this.botAI = new BotAI(this.botCar, this.botGunFireInterval);
+            this.botAI = new BotAI(this.botCar, this.botGunFireInterval, airBoundary);
             this.botRescue = FLOW.USE_STUCK_RESCUE
                 ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART, this.coreWorldPos(this.botCar) || cc.v2(0, 0))
                 : null;
