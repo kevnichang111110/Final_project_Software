@@ -9,6 +9,7 @@
 //        - 待機且滿血：完全隱藏。
 //        - 已死亡（currentHP <= 0）：隱藏。
 //   透明度用平滑淡入淡出，並直接畫進 Graphics 的顏色 alpha（不靠 node.opacity，較穩定）。
+//   3. 回血顯示優化：拔除多餘的重繪限制，只要可見就每幀重繪，並加入 healTimer 防閃爍。
 
 import Bullet from "./Bullet";
 import { isWeaponNode } from "./core/PartUtils";
@@ -40,7 +41,7 @@ export default class Health extends cc.Component {
     debugBarOffsetY: number = 28;   // 血條浮在零件中心上方多少 px（原本 0，建議拉高一點才不會壓在零件上）
 
     // --- 新增的可調欄位（新增 @property 不影響既有綁定）---
-    @property({ type: cc.Float, tooltip: "受擊後血條持續明顯顯示的秒數" })
+    @property({ type: cc.Float, tooltip: "受擊或回血後血條持續明顯顯示的秒數" })
     hitShowDuration: number = 1.5;
     @property({ type: cc.Float, tooltip: "殘血待機時的淡顯透明度 0~1" })
     idleAlpha: number = 0.35;
@@ -55,12 +56,19 @@ export default class Health extends cc.Component {
     private hpBarNode: cc.Node | null = null;
     private hpBarGraphics: cc.Graphics | null = null;
     private hitTimer: number = 0;
+    
+    // 【新增】回血專用的緩衝計時器
+    private healTimer: number = 0; 
+
     private curAlpha: number = 0;
     private lastAlpha: number = -1;
-    private lastRatio: number = -1;
+
+    // 用於每一幀比對血量增減，精確攔截 BlockTrait 產生的回血狀態
+    private lastHP: number = 100; 
 
     onLoad() {
         this.currentHP = this.maxHP;
+        this.lastHP = this.maxHP; // 初始化歷史血量
         const rb = this.getComponent(cc.RigidBody);
         if (rb) rb.enabledContactListener = true;
 
@@ -93,7 +101,6 @@ export default class Health extends cc.Component {
         this.hpBarGraphics = node.addComponent(cc.Graphics);
         this.curAlpha = 0;
         this.lastAlpha = -1;
-        this.lastRatio = -1;
     }
 
     private drawBar(ratio: number, alpha: number) {
@@ -127,6 +134,12 @@ export default class Health extends cc.Component {
         if (!Health.activeInBattle || !this.showDebugHPBar) return;
         if (!this.node || !this.node.isValid) return;
 
+        // 【核心修正】：偵測回血狀態，並給予 0.5 秒的緩衝時間，防閃爍
+        if (this.currentHP > this.lastHP && this.currentHP < this.maxHP) {
+            this.healTimer = 0.5; 
+        }
+        this.lastHP = this.currentHP; // 隨手更新歷史紀錄，供下一幀比對
+
         // 懶建立：確保父層已就緒才建血條
         if (!this.hpBarNode) {
             this.createHPBar();
@@ -134,19 +147,20 @@ export default class Health extends cc.Component {
         }
         if (!this.hpBarNode.isValid) return;
 
-        // 倒數受擊顯示時間
+        // 倒數計時器
         if (this.hitTimer > 0) this.hitTimer = Math.max(0, this.hitTimer - dt);
+        if (this.healTimer > 0) this.healTimer = Math.max(0, this.healTimer - dt);
 
         // 決定目標透明度
         let targetAlpha: number;
         if (this.currentHP <= 0) {
             targetAlpha = 0;                 // 已死亡
-        } else if (this.hitTimer > 0) {
-            targetAlpha = 1;                 // 剛受擊：明顯
+        } else if (this.hitTimer > 0 || this.healTimer > 0) {
+            targetAlpha = 1;                 // 剛受擊或【正在回血】：明顯顯示
         } else if (this.currentHP < this.maxHP) {
             targetAlpha = this.idleAlpha;    // 殘血待機：淡顯
         } else {
-            targetAlpha = 0;                 // 滿血待機：隱藏
+            targetAlpha = 0;                 // 滿血待機：完全隱藏
         }
 
         // 平滑過渡
@@ -156,8 +170,8 @@ export default class Health extends cc.Component {
 
         // 完全隱藏時就不必更新位置，省一點
         if (this.curAlpha <= 0.01) {
-            if (this.lastAlpha > 0.01) {     // 從可見變不可見，清一次
-                this.drawBar(0, 0);
+            if (this.lastAlpha > 0.01) {     // 從可見變不可見，清空畫面一次
+                if (this.hpBarGraphics) this.hpBarGraphics.clear();
                 this.lastAlpha = 0;
             }
             return;
@@ -175,14 +189,13 @@ export default class Health extends cc.Component {
         this.hpBarNode.angle = 0;
         this.hpBarNode.scaleX = 1;
         this.hpBarNode.scaleY = 1;
-
-        // 只有在數值有變化時才重畫
+        
+        // 【核心修正】：拔除所有「比對數值變化」的防重繪門檻。
+        // 只要血條是可見的，每一幀直接拿最新的 ratio 強制重畫！保證畫面與數值 100% 同步！
         const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
-        if (Math.abs(this.curAlpha - this.lastAlpha) > 0.01 || Math.abs(ratio - this.lastRatio) > 0.01) {
-            this.drawBar(ratio, this.curAlpha);
-            this.lastAlpha = this.curAlpha;
-            this.lastRatio = ratio;
-        }
+        this.drawBar(ratio, this.curAlpha);
+        
+        this.lastAlpha = this.curAlpha;
     }
 
     // ====================================================================
@@ -297,6 +310,18 @@ export default class Health extends cc.Component {
         }
     }
 
+    // 【新增】：專屬的回血接收函式
+    public heal(amount: number) {
+        if (this.currentHP <= 0 || this.currentHP >= this.maxHP) return;
+
+        // 計算並設定新的血量
+        this.currentHP = Math.min(this.maxHP, this.currentHP + amount);
+
+        // 核心機制：只要有人呼叫補血，強制把血條緩衝計時器補滿！
+        // 這樣血條就會立刻亮起，並維持在最明顯的狀態讓玩家看到
+        this.healTimer = 0.5;
+    }
+
     die() {
         this.playSfx("die");
         this.currentHP = 0;
@@ -324,7 +349,9 @@ export default class Health extends cc.Component {
         const ratio = Math.max(0, Math.min(1, this.currentHP / this.maxHP));
         this.drawBar(ratio, 1);
         this.lastAlpha = 1;
-        this.lastRatio = ratio;
+
+        // 強制同步最新血量紀錄，防止與 update 發生判定衝突
+        this.lastHP = this.currentHP; 
     }
 
     // 優先用 PartAudio（第 8 點的通用音效介面），沒有才退回 Health 自己的舊欄位

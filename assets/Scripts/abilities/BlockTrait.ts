@@ -33,16 +33,26 @@ export default class BlockTrait extends cc.Component {
         const root = this.node.parent;
         if (!root) return;
 
+        // 【核心修正整合】：因為檔名為 HealthManager.ts，Cocos 底層組件註冊名實為 "HealthManager"
         // 自己也回（回血方塊本身被打也會自我修復）
-        const selfHp = this.getComponent("Health") as any;
+        let selfHp = this.getComponent("HealthManager") as any;
+        if (!selfHp) {
+            selfHp = this.getComponent("Health") as any;
+        }
         if (selfHp) this.healTargets.push(selfHp);
 
         // 上下左右相鄰：同 root 的兄弟節點即同車零件，局部座標可直接比距離（玩家／鏡像 bot 都適用）
         const maxDist = GRID.CELL_SIZE * 1.25;
         for (const sib of root.children) {
             if (sib === this.node || !sib.isValid) continue;
-            const hp = sib.getComponent("Health") as any;
+            
+            // 【核心修正整合】：對鄰居也採用雙重相容性檢查，確保絕對能正確抓到血量組件
+            let hp = sib.getComponent("HealthManager") as any;
+            if (!hp) {
+                hp = sib.getComponent("Health") as any;
+            }
             if (!hp) continue;
+
             const dx = sib.x - this.node.x;
             const dy = sib.y - this.node.y;
             if (Math.sqrt(dx * dx + dy * dy) <= maxDist) this.healTargets.push(hp);
@@ -64,7 +74,13 @@ export default class BlockTrait extends cc.Component {
         for (const hp of this.healTargets) {
             if (!hp || !hp.node || !hp.node.isValid) continue;        // 已被打掉就略過
             if (hp.currentHP > 0 && hp.currentHP < hp.maxHP) {        // 死掉(<=0)的不復活
-                hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+                
+                // 【修改整合】：透過呼叫 heal 函式來回血，觸發血條顯示，不再直接硬改 currentHP 數值
+                if (hp.heal) {
+                    hp.heal(this.regenPerSecond * dt);
+                } else {
+                    hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+                }
 
                 // 在正在回血的對象身上冒綠光（掛 root，零件銷毀後特效仍在）。
                 if (emit && root && root.isValid) {
