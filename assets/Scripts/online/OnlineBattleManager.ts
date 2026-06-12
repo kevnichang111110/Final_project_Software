@@ -5,6 +5,7 @@ import MapLoader from "../map/MapLoader"; // 請確認你的路徑
 import MouseCannon from "../weapons/MouseCannon";
 import Health from "../HealthManager";
 import Bullet from "../Bullet";
+import Seesaw from "../map/Seesaw";
 import OnlineRuntime, { OnlineInputState, OnlineSeat } from "./OnlineRuntime";
 
 const { ccclass, property } = cc._decorator;
@@ -372,10 +373,24 @@ export default class OnlineBattleManager extends cc.Component {
                 p2: this.serializeCar(this.p2Car)
             },
             bullets: this.collectBullets(),
-            debris: this.collectDebris()
+            debris: this.collectDebris(),
+            seesaws: this.collectSeesaws()
         };
         OnlineRuntime.room.send("sync", snapshot);
         this.txCount++;
+    }
+
+    // 地圖中的動態翹翹板板子（依決定論建構，兩端順序相同 → 用 index 對位）
+    private getSeesawNodes(): cc.Node[] {
+        if (!this.mapLoader || !this.mapLoader.node) return [];
+        const comps = this.mapLoader.node.getComponentsInChildren(Seesaw);
+        return comps.map((c: any) => c.node).filter((n: cc.Node) => n && n.isValid);
+    }
+
+    private collectSeesaws(): any[] {
+        const out: any[] = [];
+        for (const n of this.getSeesawNodes()) out.push({ x: n.x, y: n.y, a: n.angle });
+        return out;
     }
 
     // 逐零件序列化：以 partsMap 的 grid key 標識，傳相對 root 的本地座標（兩端 root 佈局相同）
@@ -427,6 +442,21 @@ export default class OnlineBattleManager extends cc.Component {
         }
         this.reconcileVisualBullets(msg.bullets || []);
         this.reconcileVisualDebris(msg.debris || []);
+        this.applySeesaws(msg.seesaws || []);
+    }
+
+    // P2：依 index 套用主機的翹翹板角度/位置（P2 物理關閉，板子本身不會動）
+    private applySeesaws(list: any[]) {
+        if (!list || !list.length) return;
+        const nodes = this.getSeesawNodes();
+        const len = Math.min(nodes.length, list.length);
+        for (let i = 0; i < len; i++) {
+            const n = nodes[i], d = list[i];
+            if (n && n.isValid && d) {
+                n.setPosition(d.x, d.y);
+                n.angle = d.a;
+            }
+        }
     }
 
     private applyMeta(meta: any) {
