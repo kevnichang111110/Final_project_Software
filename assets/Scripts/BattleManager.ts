@@ -255,7 +255,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         }
         this.scheduleOnce(() => {
             if (matchOver) { OnlineRuntime.clearMatch(); cc.director.loadScene(OnlineRuntime.menuSceneName); }
-            else cc.director.loadScene(OnlineRuntime.shopSceneName);
+            else cc.director.loadScene("onlineShop");
         }, 3);
     }
 
@@ -794,7 +794,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const finished = GameManager.playerWins >= BATTLE.WINS_TO_FINISH
             || GameManager.botWins >= BATTLE.WINS_TO_FINISH;
 
-        let target = "Shop";
+        let target = "onlineShop";
         if (finished) {
             // 注意：Firebase 寫入的邏輯我們已經移到 ResultManager 去做了，這裡可以刪掉原本的 incrementWins
             
