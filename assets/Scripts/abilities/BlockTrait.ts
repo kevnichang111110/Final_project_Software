@@ -1,13 +1,3 @@
-// abilities/BlockTrait.ts
-//（第 6 點）給方塊特殊功能。掛在方塊 prefab 上：
-//   damageMultiplier < 1  → 高防禦（受到的傷害打折，例如 0.5 = 只受一半傷）
-//   regenPerSecond  > 0   → 回血方塊：每秒幫「自己與相鄰方塊」回血
-//
-// 相鄰判定：第一次戰鬥 update 時（車子已建好）以「同車身 root 下、局部座標距離 ≈ 1 格」
-//          找出自己＋上下左右鄰居，快取其 Health。每格中心相隔 GRID.CELL_SIZE(40px)，
-//          對角線 ~56.6px，用 1.25 格(~50px) 當門檻：抓得到正向鄰居、排除對角。
-// 改用「第一次 update 才掃」而非 start()，確保所有零件都已生成、避免生命週期時序問題。
-
 import HealGlow from "../fx/HealGlow";
 import Health from "../HealthManager";
 import { GRID, HEALFX } from "../core/GameConstants";
@@ -22,51 +12,98 @@ export default class BlockTrait extends cc.Component {
     @property({ tooltip: "每秒幫自己與相鄰方塊回血的量，0 = 不回血" })
     regenPerSecond: number = 0;
 
-    private healTargets: any[] = [];   // 自己＋相鄰方塊的 Health（第一次戰鬥 update 找一次）
+    private healTargets: any[] = [];   
     private scanned = false;
-    private fxTimer = 0;               // 綠光節流計時
+    private fxTimer = 0;               
 
     private scanNeighbors() {
         this.scanned = true;
         this.healTargets = [];
 
         const root = this.node.parent;
-        if (!root) return;
-
-        // 自己也回（回血方塊本身被打也會自我修復）
-        const selfHp = this.getComponent("Health") as any;
-        if (selfHp) this.healTargets.push(selfHp);
-
-        // 上下左右相鄰：同 root 的兄弟節點即同車零件，局部座標可直接比距離（玩家／鏡像 bot 都適用）
-        const maxDist = GRID.CELL_SIZE * 1.25;
-        for (const sib of root.children) {
-            if (sib === this.node || !sib.isValid) continue;
-            const hp = sib.getComponent("Health") as any;
-            if (!hp) continue;
-            const dx = sib.x - this.node.x;
-            const dy = sib.y - this.node.y;
-            if (Math.sqrt(dx * dx + dy * dy) <= maxDist) this.healTargets.push(hp);
+        if (!root) {
+            console.error(`[BlockTrait] ${this.node.name} 找不到 parent，無法掃描鄰居`);
+            return;
         }
 
-        cc.log(`[BlockTrait] ${this.node.name} regen=${this.regenPerSecond} → 回血對象 ${this.healTargets.length} 個`);
+        console.log(`[BlockTrait] ${this.node.name} 開始掃描鄰居... 父節點是: ${root.name}`);
+
+        // 自己也回
+        const selfHp = this.getComponent("Health") as any;
+        if (selfHp) {
+            this.healTargets.push(selfHp);
+            console.log(`[BlockTrait] ${this.node.name} 已將自己加入回血清單`);
+        } else {
+            console.warn(`[BlockTrait] ${this.node.name} 本身沒有 Health 組件！`);
+        }
+
+        const maxDist = GRID.CELL_SIZE * 1.25;
+        console.log(`[BlockTrait] 設定的格點距離門檻為: ${maxDist} (CELL_SIZE=${GRID.CELL_SIZE})`);
+
+        for (const sib of root.children) {
+            if (sib === this.node || !sib.isValid) continue;
+
+            const hp = sib.getComponent("Health") as any;
+            if (!hp) {
+                // console.log(`[BlockTrait] 忽略 ${sib.name}: 沒有 Health 組件`);
+                continue;
+            }
+
+            // 計算距離
+            const dx = sib.x - this.node.x;
+            const dy = sib.y - this.node.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist <= maxDist) {
+                this.healTargets.push(hp);
+                console.log(`[BlockTrait] ✅ 找到鄰居: ${sib.name}, 距離: ${dist.toFixed(2)}`);
+            } else {
+                // 如果你覺得應該是鄰居但沒掃到，看這裡的 log
+                console.log(`[BlockTrait] ❌ 距離太遠: ${sib.name}, 距離: ${dist.toFixed(2)}`);
+            }
+        }
+
+        console.log(`[BlockTrait] 掃描結束。${this.node.name} 的回血總目標數: ${this.healTargets.length}`);
     }
 
     update(dt: number) {
+        // 1. 檢查是否有設定回血數值
         if (this.regenPerSecond <= 0) return;
-        if (!Health.activeInBattle) return;          // 只在戰鬥中回血（商店不跑）
-        if (!this.scanned) this.scanNeighbors();      // 第一次 update 時掃一次（車已建好）
+
+        // 2. 檢查戰鬥狀態 (這最常出錯)
+        if (!Health.activeInBattle) {
+            // 如果你一直沒看到上面的 log，很可能是因為 Health.activeInBattle 沒被設為 true
+            console.log("[BlockTrait] 戰鬥尚未激活 (Health.activeInBattle 為 false)");
+            return;
+        }
+
+        // 3. 第一次進入執行掃描
+        if (!this.scanned) {
+            this.scanNeighbors();
+        }
+
         if (this.healTargets.length === 0) return;
 
         this.fxTimer -= dt;
-        const emit = this.fxTimer <= 0;   // 這一幀是否冒綠光（節流）
+        const emit = this.fxTimer <= 0;
         const root = this.node.parent;
 
-        for (const hp of this.healTargets) {
-            if (!hp || !hp.node || !hp.node.isValid) continue;        // 已被打掉就略過
-            if (hp.currentHP > 0 && hp.currentHP < hp.maxHP) {        // 死掉(<=0)的不復活
-                hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+        let hasHealedAny = false;
 
-                // 在正在回血的對象身上冒綠光（掛 root，零件銷毀後特效仍在）。
+        for (const hp of this.healTargets) {
+            if (!hp || !hp.node || !hp.node.isValid) continue;
+
+            // 只有當前血量 > 0 (沒死) 且 小於最大血量時才回血
+            if (hp.currentHP > 0 && hp.currentHP < hp.maxHP) {
+                const oldHP = hp.currentHP;
+                hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+                hasHealedAny = true;
+
+                // 偶爾印出回血數值確認
+                if (emit) {
+                    console.log(`[BlockTrait] ${this.node.name} 正在幫 ${hp.node.name} 回血: ${oldHP.toFixed(1)} -> ${hp.currentHP.toFixed(1)}`);
+                }
+
                 if (emit && root && root.isValid) {
                     const wp = hp.node.convertToWorldSpaceAR(cc.v2(0, 0));
                     const size = Math.max(hp.node.width, hp.node.height) || 40;
@@ -75,6 +112,11 @@ export default class BlockTrait extends cc.Component {
             }
         }
 
-        if (emit) this.fxTimer = HEALFX.EMIT_INTERVAL;
+        if (emit) {
+            if (!hasHealedAny) {
+                // console.log(`[BlockTrait] ${this.node.name} 掃描了目標但沒有人需要回血 (可能大家都滿血)`);
+            }
+            this.fxTimer = HEALFX.EMIT_INTERVAL;
+        }
     }
 }
