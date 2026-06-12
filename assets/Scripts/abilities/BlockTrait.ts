@@ -18,9 +18,20 @@ export default class BlockTrait extends cc.Component {
     update(dt: number) {
         if (this.regenPerSecond <= 0) return;
 
-        const hp = this.getComponent("Health") as any;
+        // 【核心修正】因為檔名為 HealthManager.ts，Cocos 底層組件註冊名實為 "HealthManager"
+        // 這裡採用雙重相容性檢查，確保絕對能正確抓到血量組件
+        let hp = this.getComponent("HealthManager") as any;
+        if (!hp) {
+            hp = this.getComponent("Health") as any;
+        }
+
         if (hp && hp.currentHP > 0 && hp.currentHP < hp.maxHP) {
-            hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+            // 【修改】透過呼叫 heal 函式來回血，觸發血條顯示，不再直接硬改 currentHP 數值
+            if (hp.heal) {
+                hp.heal(this.regenPerSecond * dt);
+            } else {
+                hp.currentHP = Math.min(hp.maxHP, hp.currentHP + this.regenPerSecond * dt);
+            }
         }
     }
 }
