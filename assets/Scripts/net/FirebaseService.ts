@@ -20,7 +20,13 @@ const firebaseConfig = {
 };
 // ⬆⬆⬆ ⬆⬆⬆
 
-export interface LeaderRow { name: string; wins: number; bestScore: number; avatarId: number;}
+export interface LeaderRow { 
+    name: string; 
+    avatarId: number;
+    winRate: number;       // 勝率 (0 ~ 100)
+    currentStreak: number; // 當前連勝
+    maxStreak: number;     // 最高連勝
+}
 
 export default class FirebaseService {
     private static inited = false;
@@ -113,60 +119,90 @@ export default class FirebaseService {
         ).catch((e: any) => cc.warn("[Firebase] 分數更新失敗", e));
     }
 
-    static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
-        console.log("【程式碼解法】改用 REST API 繞過 SDK 抓取排行榜...");
-        
-        // 直接對準你的 ssdfinal-c6446 專案資料庫發送請求
+   static getLeaderboard(limit: number = 20): Promise<LeaderRow[]> {
+        console.log("【REST API】開始抓取勝率排行榜...");
         const projectId = "ssdfinal-c6446"; 
         const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users`;
         
         return fetch(url)
-            .then(res => {
-                if (!res.ok) throw new Error("HTTP 狀態碼異常: " + res.status);
-                return res.json(); // 將回傳的文字轉成 JSON
-            })
+            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(data => {
-                console.log("REST API 成功抓到原始資料！", data);
-                
                 const out: LeaderRow[] = [];
-                
-                // 防呆：如果資料庫完全沒資料，data.documents 會是 undefined
                 if (data.documents) {
                     data.documents.forEach((doc: any) => {
                         if (doc.fields) {
-                            // 解析 Firestore 特殊的 JSON 結構
                             const name = doc.fields.name ? doc.fields.name.stringValue : "玩家";
                             
-                            // 處理數字 (Firestore 會根據存入方式判斷為 integerValue 或 doubleValue)
-                            let wins = 0;
-                            if (doc.fields.wins) {
-                                wins = doc.fields.wins.integerValue ? parseInt(doc.fields.wins.integerValue) : 
-                                      (doc.fields.wins.doubleValue ? parseFloat(doc.fields.wins.doubleValue) : 0);
-                            }
+                            // 解析數值防呆 (處理 integerValue 或 doubleValue)
+                            const avatarId = doc.fields.avatarId && doc.fields.avatarId.integerValue ? parseInt(doc.fields.avatarId.integerValue) : 0;
                             
-                            let bestScore = 0;
-                            if (doc.fields.bestScore) {
-                                bestScore = doc.fields.bestScore.integerValue ? parseInt(doc.fields.bestScore.integerValue) : 
-                                           (doc.fields.bestScore.doubleValue ? parseFloat(doc.fields.bestScore.doubleValue) : 0);
-                            }
-                            let avatarId = 0;
-                            if (doc.fields.avatarId) {
-                                avatarId = doc.fields.avatarId.integerValue ? parseInt(doc.fields.avatarId.integerValue) : 0;
-                            }
-                            out.push({ name, wins, bestScore, avatarId});
+                            const winRate = doc.fields.winRate ? 
+                                parseFloat(doc.fields.winRate.doubleValue || doc.fields.winRate.integerValue || "0") : 0;
+                                
+                            const currentStreak = doc.fields.currentStreak && doc.fields.currentStreak.integerValue ? 
+                                parseInt(doc.fields.currentStreak.integerValue) : 0;
+                                
+                            const maxStreak = doc.fields.maxStreak && doc.fields.maxStreak.integerValue ? 
+                                parseInt(doc.fields.maxStreak.integerValue) : 0;
+
+                            out.push({ name, avatarId, winRate, currentStreak, maxStreak });
                         }
                     });
                 }
                 
-                // 因為 REST API 預設沒有排序，我們在前端手動按勝場 (wins) 由大到小排序
-                out.sort((a, b) => b.wins - a.wins);
+                // 排行榜權重：優先看【勝率】由高到低，若勝率相同則看【最高連勝】
+                out.sort((a, b) => {
+                    if (b.winRate === a.winRate) return b.maxStreak - a.maxStreak;
+                    return b.winRate - a.winRate;
+                });
                 
-                // 回傳前 N 名 (依照傳入的 limit)
                 return out.slice(0, limit);
             })
-            .catch(err => {
-                console.error("REST API 抓取徹底失敗：", err);
-                return [];
+            .catch(err => { console.error(err); return []; });
+    }
+
+    static updateGameResult(isWin: boolean): Promise<any> {
+        const u = this.user;
+        if (!this.isReady() || !u) return Promise.resolve();
+
+        const db = firebase.firestore();
+        const userRef = db.collection("users").doc(u.uid);
+
+        // 使用 Transaction (交易) 確保讀取目前的連勝與勝場進行正確累加
+        return db.runTransaction((transaction: any) => {
+            return transaction.get(userRef).then((doc: any) => {
+                // 如果是新玩家，給予預設值
+                const data = doc.exists ? doc.data() : {};
+                let wins = data.wins || 0;
+                let totalGames = data.totalGames || 0;
+                let currentStreak = data.currentStreak || 0;
+                let maxStreak = data.maxStreak || 0;
+
+                // 局數必定 +1
+                totalGames += 1;
+
+                if (isWin) {
+                    wins += 1;
+                    currentStreak += 1; // 連勝增加
+                    if (currentStreak > maxStreak) {
+                        maxStreak = currentStreak; // 破最高連勝紀錄
+                    }
+                } else {
+                    currentStreak = 0; // 輸了，當前連勝直接無情歸零
+                }
+
+                // 計算勝率 (四捨五入到小數點後第一位，乘上 100 方便存成百分比數字)
+                const winRate = Math.round((wins / totalGames) * 1000) / 10;
+
+                // 寫回資料庫
+                transaction.set(userRef, {
+                    wins: wins,
+                    totalGames: totalGames,
+                    winRate: winRate,
+                    currentStreak: currentStreak,
+                    maxStreak: maxStreak
+                }, { merge: true });
             });
+        }).catch((e: any) => cc.warn("[Firebase] 遊戲結果結算失敗", e));
     }
 }
