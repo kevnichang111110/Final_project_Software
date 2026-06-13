@@ -39,12 +39,15 @@ export interface BuildParams {
     root: cc.Node;
     prefabs: cc.Prefab[];
     onCoreDie: (winner: "PLAYER" | "BOT") => void;  // 核心被打爆時通知 BattleManager
+    // 線上對戰：P2 也是真人，需要跟 P1 一樣把所有槍做成「跟隨滑鼠的砲塔」。
+    // 單機時 BOT 由 AI 驅動、維持焊死直射，故預設只有 PLAYER 側的槍變砲塔。
+    mouseTurret?: boolean;
 }
 
 export default class CarBuilder {
 
     static build(params: BuildParams): BuiltCar {
-        const { gridData, startPos, side, root, prefabs, onCoreDie } = params;
+        const { gridData, startPos, side, root, prefabs, onCoreDie, mouseTurret } = params;
 
         const result: BuiltCar = {
             partsMap: new Map(),
@@ -88,7 +91,7 @@ export default class CarBuilder {
             const drag = getDraggable(node);
             const hasMouseCannon = !!node.getComponent(MouseCannon);
             const isGun = !!drag && drag.partType === PartType.Weapon && drag.weaponMode === WeaponMode.Gun;
-            const wantTurret = hasMouseCannon || (side === "PLAYER" && isGun);
+            const wantTurret = hasMouseCannon || ((side === "PLAYER" || mouseTurret) && isGun);
 
             // 槍 / 砲塔（遠程武器）改成 sensor：只偵測傷害、不產生物理碰撞，
             // 讓槍管穿過敵車與地形、不把車推歪或卡住，砲塔瞄準也完全不受碰撞干擾。
@@ -168,7 +171,7 @@ export default class CarBuilder {
                 const drag2 = getDraggable(node);
                 const mc = node.getComponent(MouseCannon);
                 const gun = !!drag2 && drag2.weaponMode === WeaponMode.Gun;
-                const turret = !!mc || (side === "PLAYER" && gun);
+                const turret = !!mc || ((side === "PLAYER" || mouseTurret) && gun);
                 if (turret) {
                     const tj = JointFactory.createTurretJoint(node, result.partsMap, x, y, MOUSE_TURRET.TORQUE);
                     if (tj) {

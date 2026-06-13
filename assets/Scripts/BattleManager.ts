@@ -373,6 +373,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
             root: this.playerRoot!,
             prefabs: this.allPrefabs,
             onCoreDie: () => this.reportRoundOver("P2"),
+            mouseTurret: true,   // P1 是真人 → 槍跟隨滑鼠
         });
         this.botCar = CarBuilder.build({
             gridData: OnlineRuntime.p2Grid,
@@ -381,6 +382,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
             root: this.botRoot!,
             prefabs: this.allPrefabs,
             onCoreDie: () => this.reportRoundOver("P1"),
+            mouseTurret: true,   // P2 也是真人 → 槍跟隨滑鼠（否則被當 AI 固定直射槍，無法瞄準）
         });
         if (this.botCar && this.botCar.coreNode) this.botCar.coreNode.angle = 180;
         if (this.botRoot) this.botRoot.angle = 180;

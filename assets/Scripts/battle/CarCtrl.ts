@@ -237,8 +237,15 @@ export default class CarCtrl {
         let err = aim - cur;
         while (err > 180) err -= 360; while (err < -180) err += 360;
 
+        // 鏡像偵測：線上 P2 的車是 scaleX=-1（水平翻轉），此時「增加 local angle」會讓
+        // 世界角度反向。用 x/y 軸在世界空間的外積判斷手性（<0=鏡像），鏡像時 err 反號，
+        // 砲塔才會朝游標方向轉而非反向亂甩。非鏡像車（P1）sign=1，行為不變。
+        const ax = weaponNode.convertToWorldSpaceAR(cc.v2(1, 0)).sub(center);
+        const ay = weaponNode.convertToWorldSpaceAR(cc.v2(0, 1)).sub(center);
+        const sign = (ax.x * ay.y - ax.y * ay.x) < 0 ? -1 : 1;
+
         const maxStep = MOUSE_TURRET.AIM_SPEED * dt;
-        weaponNode.angle += cc.misc.clampf(err, -maxStep, maxStep);
+        weaponNode.angle += cc.misc.clampf(err * sign, -maxStep, maxStep);
         weaponRb.angularVelocity = 0;
         const anyRb = weaponRb as any;
         if (anyRb.syncRotation) anyRb.syncRotation(false);
