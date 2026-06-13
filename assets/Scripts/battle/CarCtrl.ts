@@ -237,12 +237,18 @@ export default class CarCtrl {
         let err = aim - cur;
         while (err > 180) err -= 360; while (err < -180) err += 360;
 
-        // 鏡像偵測：線上 P2 的車是 scaleX=-1（水平翻轉），此時「增加 local angle」會讓
-        // 世界角度反向。用 x/y 軸在世界空間的外積判斷手性（<0=鏡像），鏡像時 err 反號，
-        // 砲塔才會朝游標方向轉而非反向亂甩。非鏡像車（P1）sign=1，行為不變。
-        const ax = weaponNode.convertToWorldSpaceAR(cc.v2(1, 0)).sub(center);
-        const ay = weaponNode.convertToWorldSpaceAR(cc.v2(0, 1)).sub(center);
-        const sign = (ax.x * ay.y - ax.y * ay.x) < 0 ? -1 : 1;
+        // 旋轉方向手性：weaponNode.angle 的旋轉套在「場景父節點」的座標系裡，所以要量
+        // 父節點（root）的手性，而不是武器節點自己——逐零件的 scaleX=-1（線上 P2 鏡像）
+        // 只翻轉砲管靜止朝向（已被 cur 量到），不影響旋轉方向。量錯成節點自身會讓 P2 反向。
+        // 只有 root 本身被鏡像（scaleX<0）時才需要反號；目前 P1/P2 的 root 皆未鏡像 → sign=1。
+        let sign = 1;
+        const par = weaponNode.parent;
+        if (par) {
+            const pc = par.convertToWorldSpaceAR(cc.v2(0, 0));
+            const px = par.convertToWorldSpaceAR(cc.v2(1, 0)).sub(pc);
+            const py = par.convertToWorldSpaceAR(cc.v2(0, 1)).sub(pc);
+            if (px.x * py.y - px.y * py.x < 0) sign = -1;
+        }
 
         const maxStep = MOUSE_TURRET.AIM_SPEED * dt;
         weaponNode.angle += cc.misc.clampf(err * sign, -maxStep, maxStep);
