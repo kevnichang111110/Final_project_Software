@@ -352,6 +352,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
             prefabs: this.allPrefabs,
             onCoreDie: (winner) => this.handleGameOver(winner),
         });
+        this.startAllPhysics(false);
         // 玩家車已建好 → 重新挑一張預設地圖（避免車的物件壓在玩家身上）
         if (this.mapLoader) this.mapLoader.loadRandomMap();
         this.ctrlA = new CarCtrl(this.playerCar, this.playerRoot!, "PLAYER", this.weapons!, {
@@ -384,6 +385,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
             onCoreDie: () => this.reportRoundOver("P1"),
             mouseTurret: true,   // P2 也是真人 → 槍跟隨滑鼠（否則被當 AI 固定直射槍，無法瞄準）
         });
+        this.startAllPhysics(false)
         if (this.botCar && this.botCar.coreNode) this.botCar.coreNode.angle = 180;
         if (this.botRoot) this.botRoot.angle = 180;
 
@@ -559,7 +561,6 @@ export default class BattleManager extends cc.Component implements INetBattle {
             if (this.countdownLabel) this.countdownLabel.string = String(this.startCountdownValue);
             // 單機：在倒數 1 時才生成 Bot（線上兩台車一開始就建好）
             if (this.mode === "LOCAL" && this.startCountdownValue === 1) this.spawnBotSequence();
-            this.startAllPhysics(false);
         } else {
             if (this.countdownLabel) this.countdownLabel.string = "FIGHT!";
             this.isBattleStarted = true;
