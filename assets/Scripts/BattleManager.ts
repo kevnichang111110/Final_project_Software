@@ -260,13 +260,25 @@ export default class BattleManager extends cc.Component implements INetBattle {
         
         this.scheduleOnce(() => {
             if (matchOver) { 
-                // 【關鍵補強】在跳轉場景前，把「多人模式」和「本地是否獲勝」的資料寫進去
+                // 1. 設定視角與模式
                 GameManager.isMultiplayerMode = true;
                 GameManager.isLocalPlayerWinner = iWon; 
                 
+                // === 🚀【關鍵修復】同步線上比分到 GameManager ===
+                // 判斷這台電腦是 P1 還是 P2，確保「自己的分數」永遠顯示在左邊 (playerWins)
+                if (OnlineRuntime.mySeat === "P1") {
+                    GameManager.playerWins = OnlineRuntime.p1Wins;
+                    GameManager.botWins = OnlineRuntime.p2Wins;
+                } else {
+                    GameManager.playerWins = OnlineRuntime.p2Wins;
+                    GameManager.botWins = OnlineRuntime.p1Wins;
+                }
+                // ===========================================
+                
+                // 清理連線戰局資料 (因為上面已經把最終比分備份到 GameManager 了，所以現在清理很安全)
                 OnlineRuntime.clearMatch(); 
                 
-                // 維持你的聰明做法，跳轉到設定好的 menuSceneName (也就是 Result)
+                // 跳轉至結算畫面
                 cc.director.loadScene(OnlineRuntime.menuSceneName); 
             }
             else cc.director.loadScene("onlineShop");
