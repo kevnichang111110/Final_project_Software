@@ -20,7 +20,7 @@
         "__id__": 143
       },
       {
-        "__id__": 152
+        "__id__": 154
       }
     ],
     "_active": false,
@@ -120,7 +120,7 @@
         "__id__": 142
       },
       {
-        "__id__": 151
+        "__id__": 153
       }
     ],
     "_prefab": null,
@@ -6913,6 +6913,12 @@
       },
       {
         "__id__": 150
+      },
+      {
+        "__id__": 151
+      },
+      {
+        "__id__": 152
       }
     ],
     "slotIcons": [
@@ -6958,6 +6964,12 @@
       },
       {
         "__uuid__": "a2fb8b71-0fe2-4d34-8b3f-c36ebdee5ab2"
+      },
+      {
+        "__uuid__": "ad22639c-23fd-4a8f-b191-77e25d2c99cd"
+      },
+      {
+        "__uuid__": "6937dca2-a99a-44c1-afb1-0f02dddd0bc1"
       }
     ],
     "corePrefab": {
@@ -7152,6 +7164,32 @@
     "category": 1
   },
   {
+    "__type__": "ItemData",
+    "name": "Body2",
+    "price": 30,
+    "icon": {
+      "__uuid__": "b949fd17-8a9d-491f-8538-63b68c715e28"
+    },
+    "partPrefab": {
+      "__uuid__": "ad22639c-23fd-4a8f-b191-77e25d2c99cd"
+    },
+    "unlockRound": 2,
+    "category": 0
+  },
+  {
+    "__type__": "ItemData",
+    "name": "Body3",
+    "price": 30,
+    "icon": {
+      "__uuid__": "0d090197-f6dc-4dcc-9f5c-a3ecb4ec5c94"
+    },
+    "partPrefab": {
+      "__uuid__": "6937dca2-a99a-44c1-afb1-0f02dddd0bc1"
+    },
+    "unlockRound": 3,
+    "category": 0
+  },
+  {
     "__type__": "65d42ZeY/VGh6iYX8pZRKLi",
     "_name": "",
     "_objFlags": 0,
@@ -7176,16 +7214,16 @@
     },
     "_children": [
       {
-        "__id__": 153
+        "__id__": 155
       },
       {
-        "__id__": 156
+        "__id__": 158
       },
       {
-        "__id__": 159
+        "__id__": 161
       },
       {
-        "__id__": 162
+        "__id__": 164
       }
     ],
     "_active": true,
@@ -7243,16 +7281,16 @@
     "_name": "bound",
     "_objFlags": 0,
     "_parent": {
-      "__id__": 152
+      "__id__": 154
     },
     "_children": [],
     "_active": true,
     "_components": [
       {
-        "__id__": 154
+        "__id__": 156
       },
       {
-        "__id__": 155
+        "__id__": 157
       }
     ],
     "_prefab": null,
@@ -7308,7 +7346,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 153
+      "__id__": 155
     },
     "_enabled": true,
     "_type": 0,
@@ -7333,7 +7371,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 153
+      "__id__": 155
     },
     "_enabled": true,
     "tag": 0,
@@ -7359,16 +7397,16 @@
     "_name": "bound",
     "_objFlags": 0,
     "_parent": {
-      "__id__": 152
+      "__id__": 154
     },
     "_children": [],
     "_active": true,
     "_components": [
       {
-        "__id__": 157
+        "__id__": 159
       },
       {
-        "__id__": 158
+        "__id__": 160
       }
     ],
     "_prefab": null,
@@ -7424,7 +7462,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 156
+      "__id__": 158
     },
     "_enabled": true,
     "_type": 0,
@@ -7449,7 +7487,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 156
+      "__id__": 158
     },
     "_enabled": true,
     "tag": 0,
@@ -7475,16 +7513,16 @@
     "_name": "floor",
     "_objFlags": 0,
     "_parent": {
-      "__id__": 152
+      "__id__": 154
     },
     "_children": [],
     "_active": true,
     "_components": [
       {
-        "__id__": 160
+        "__id__": 162
       },
       {
-        "__id__": 161
+        "__id__": 163
       }
     ],
     "_prefab": null,
@@ -7540,7 +7578,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 159
+      "__id__": 161
     },
     "_enabled": true,
     "_type": 0,
@@ -7565,7 +7603,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 159
+      "__id__": 161
     },
     "_enabled": true,
     "tag": 0,
@@ -7591,16 +7629,16 @@
     "_name": "top",
     "_objFlags": 0,
     "_parent": {
-      "__id__": 152
+      "__id__": 154
     },
     "_children": [],
     "_active": true,
     "_components": [
       {
-        "__id__": 163
+        "__id__": 165
       },
       {
-        "__id__": 164
+        "__id__": 166
       }
     ],
     "_prefab": null,
@@ -7656,7 +7694,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 162
+      "__id__": 164
     },
     "_enabled": true,
     "_type": 0,
@@ -7681,7 +7719,7 @@
     "_name": "",
     "_objFlags": 0,
     "node": {
-      "__id__": 162
+      "__id__": 164
     },
     "_enabled": true,
     "tag": 0,
