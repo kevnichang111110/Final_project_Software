@@ -559,6 +559,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
             if (this.countdownLabel) this.countdownLabel.string = String(this.startCountdownValue);
             // 單機：在倒數 1 時才生成 Bot（線上兩台車一開始就建好）
             if (this.mode === "LOCAL" && this.startCountdownValue === 1) this.spawnBotSequence();
+            this.startAllPhysics(false);
         } else {
             if (this.countdownLabel) this.countdownLabel.string = "FIGHT!";
             this.isBattleStarted = true;
