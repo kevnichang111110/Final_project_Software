@@ -448,6 +448,8 @@ export default class BattleManager extends cc.Component implements INetBattle {
                 ? new StuckRescue(this.botCar, this.botRoot, GROUP.BOT_PART, this.coreWorldPos(this.botCar) || cc.v2(0, 0))
                 : null;
         }
+
+        this.startAllPhysics(false);
     }
 
     private startAllPhysics(dynamic: boolean = true) {
