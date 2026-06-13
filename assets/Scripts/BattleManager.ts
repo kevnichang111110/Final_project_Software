@@ -251,7 +251,16 @@ export default class BattleManager extends cc.Component implements INetBattle {
         const winner = msg && msg.winner === "P2" ? "P2" : "P1";
         const iWon = winner === OnlineRuntime.mySeat;
         const matchOver = !!(msg && msg.matchOver);
-        
+
+        // 結算音效：兩端各自依「自己是否獲勝」播勝/敗音效（線上不走 handleGameOver，所以這裡補上）
+        cc.audioEngine.stopMusic();
+        if (this.suddenDeathLabel) {
+            this.suddenDeathLabel.node.stopAllActions();
+            this.suddenDeathLabel.node.active = false;
+        }
+        if (iWon) { if (this.victorySfx) cc.audioEngine.playEffect(this.victorySfx, false); }
+        else { if (this.defeatSfx) cc.audioEngine.playEffect(this.defeatSfx, false); }
+
         if (this.resultLabel) {
             this.resultLabel.node.active = true;
             this.resultLabel.string = matchOver ? (iWon ? "VICTORY" : "DEFEAT") : `${winner} WIN!`;
@@ -558,7 +567,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         this.syncTimer += dt;
         if (this.syncTimer >= 0.05) {
             this.syncTimer = 0;
-            if (this.net) this.net.broadcast({ started: this.isBattleStarted, countdown: this.startCountdownValue, timer: this.matchTimer });
+            if (this.net) this.net.broadcast({ started: this.isBattleStarted, countdown: this.startCountdownValue, timer: this.matchTimer, suddenDeath: this.isSuddenDeath });
         }
     }
 
@@ -705,6 +714,30 @@ export default class BattleManager extends cc.Component implements INetBattle {
             this.countdownLabel.string = "FIGHT!";
             this.scheduleOnce(() => { if (this.countdownLabel) this.countdownLabel.node.active = false; }, 1);
         }
+        // 與主機一致：開戰後切到戰鬥 BGM（CLIENT 不跑 updateCountdown，所以這裡補上）
+        if (this.bgmClip) {
+            const clip = this.bgmClip;
+            this.scheduleOnce(() => {
+                cc.audioEngine.stopMusic();
+                cc.audioEngine.playMusic(clip, true);
+            }, 1.0);
+        }
+    }
+
+    // CLIENT：主機快照回報已進入驟死 → 補上字卡＋音效＋OVERTIME（扣血與落物由主機算後隨快照同步過來）
+    onClientSuddenDeath() {
+        if (this.timerLabel) {
+            this.timerLabel.node.stopAllActions();
+            this.timerLabel.node.opacity = 255;
+            this.timerLabel.string = "OVERTIME";
+        }
+        if (this.suddenDeathLabel) {
+            this.suddenDeathLabel.node.active = true;
+            cc.tween(this.suddenDeathLabel.node)
+                .repeatForever(cc.tween().to(0.5, { opacity: 0 }).to(0.5, { opacity: 255 }))
+                .start();
+        }
+        if (this.suddenDeathSfx) cc.audioEngine.playEffect(this.suddenDeathSfx, false);
     }
 
     // ====================================================================

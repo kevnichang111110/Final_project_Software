@@ -1,5 +1,6 @@
 import OnlineRuntime from "./OnlineRuntime";
 import FirebaseService from "../net/FirebaseService";
+import GameManager from "../GameManager";
 const { ccclass, property } = cc._decorator;
 
 // 【關鍵修正 1】：這行絕對不能少，它是告訴 TypeScript 不要去 import，而是去全域找 Colyseus 插件
@@ -33,6 +34,12 @@ export default class OnlineClient extends cc.Component {
             this.cancelConnect();
             return;
         }
+        // 進入多人配對前先清空上一場（單機或上一場線上）留下的狀態：
+        // 戰車配置（GameManager.playerCarGrid + OnlineRuntime 的 p1/p2Grid）、金錢、勝場、搶到的道具。
+        // 否則新的一場會沿用舊車與舊金錢。room 此時必為 null，clearMatch 不影響連線。
+        GameManager.resetAllData();
+        OnlineRuntime.clearMatch();
+
         this.isConnecting = true;
         this.cancelRequested = false;
         this.setConnectingUI(true);

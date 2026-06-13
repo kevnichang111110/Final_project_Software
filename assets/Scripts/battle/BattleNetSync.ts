@@ -24,6 +24,8 @@ export interface INetBattle {
     getSeesawNodes(): cc.Node[];
     // 非主機端收到「開戰」時回呼（設 isBattleStarted、顯示 FIGHT!、隱藏倒數）
     onClientFight(): void;
+    // 非主機端收到「進入驟死」時回呼（顯示驟死字卡＋音效，僅一次；扣血/落物由主機算後隨快照同步）
+    onClientSuddenDeath(): void;
 }
 
 export default class BattleNetSync {
@@ -36,6 +38,7 @@ export default class BattleNetSync {
     // 主機端追蹤的驟死掉落物
     private debrisNodes: { node: cc.Node, p: number }[] = [];
     private p2ShownFight = false;
+    private p2ShownSuddenDeath = false;
 
     // 主機端累積的一次性特效，每次快照送出後清空，client 播放
     // t=0 槍口火光（a=方向弧度）；t=1 打擊火花（a=強度 0~1）
@@ -83,7 +86,7 @@ export default class BattleNetSync {
     }
 
     // ---- 主機：廣播完整世界快照 ----
-    broadcast(meta: { started: boolean, countdown: number, timer: number }) {
+    broadcast(meta: { started: boolean, countdown: number, timer: number, suddenDeath: boolean }) {
         if (!OnlineRuntime.room) return;
         const snapshot = {
             meta,
@@ -199,7 +202,11 @@ export default class BattleNetSync {
             this.p2ShownFight = true;
             this.bm.onClientFight();
         }
-        if (this.bm.timerLabel && meta.timer != null) {
+        // 驟死字卡＋音效：只在第一次轉為 true 時觸發；timer 文字交給 onClientSuddenDeath 顯示 OVERTIME
+        if (meta.suddenDeath && !this.p2ShownSuddenDeath) {
+            this.p2ShownSuddenDeath = true;
+            this.bm.onClientSuddenDeath();
+        } else if (!meta.suddenDeath && this.bm.timerLabel && meta.timer != null) {
             this.bm.timerLabel.string = String(Math.max(0, Math.ceil(meta.timer)));
         }
     }
