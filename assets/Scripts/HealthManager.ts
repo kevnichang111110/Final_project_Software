@@ -317,6 +317,9 @@ export default class Health extends cc.Component {
         const clamped = Math.max(0, Math.min(this.maxHP, hp));
         if (clamped < this.currentHP - 0.5) {
             this.hitTimer = this.hitShowDuration;
+            // 線上 P2（純畫面端）：物理/傷害判定全關，不會走 takeDamage → 受擊音效在這裡補播。
+            // 由主機快照的掉血驅動；PartAudio 自帶 minInterval 節流，不會連發太吵。
+            this.playSfx("hit");
         } else if (clamped > this.currentHP + 0.5) {
             this.healTimer = 0.5;
         }

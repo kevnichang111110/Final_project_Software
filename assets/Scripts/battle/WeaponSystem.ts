@@ -46,7 +46,7 @@ export default class WeaponSystem {
     private config: BulletConfig;
 
     // 線上 host 用：每次發射時回報槍口世界座標與方向，供同步槍口火光到對手畫面
-    public onMuzzle: ((worldPos: cc.Vec2, dir: cc.Vec2) => void) | null = null;
+    public onMuzzle: ((worldPos: cc.Vec2, dir: cc.Vec2, weaponNode?: cc.Node) => void) | null = null;
 
     constructor(bulletPrefab: cc.Prefab | null, container: cc.Node, config: BulletConfig) {
         this.bulletPrefab = bulletPrefab;
@@ -67,7 +67,7 @@ export default class WeaponSystem {
         let dir = muzzleWorld.sub(originWorld).normalize();
         if (dir.mag() < 0.1) dir = side === "PLAYER" ? cc.v2(-1, 0) : cc.v2(1, 0);
 
-        this.createBullet(side, muzzleWorld, dir, override);
+        this.createBullet(side, muzzleWorld, dir, override, weaponNode);
     }
 
     // 朝某個世界座標射擊（滑鼠砲）。子彈從 firepoint（或武器中心朝目標前方一點）射出。
@@ -83,10 +83,10 @@ export default class WeaponSystem {
             ? firePoint.convertToWorldSpaceAR(cc.v2(0, 0))
             : center.add(dir.mul(45)); // 沒 firepoint 時，往前 45px 避免一出生就打到自己
 
-        this.createBullet(side, muzzle, dir, override);
+        this.createBullet(side, muzzle, dir, override, weaponNode);
     }
 
-    private createBullet(side: "PLAYER" | "BOT", worldPos: cc.Vec2, dir: cc.Vec2, override?: ShotOverride): cc.Node | null {
+    private createBullet(side: "PLAYER" | "BOT", worldPos: cc.Vec2, dir: cc.Vec2, override?: ShotOverride, weaponNode?: cc.Node): cc.Node | null {
         if (!this.bulletPrefab) {
             cc.error("WeaponSystem: 未綁定子彈 Prefab！");
             return null;
@@ -125,7 +125,7 @@ export default class WeaponSystem {
         // 槍口火光（玩家與 Bot 共用此路徑；發射冷卻已節流，每發一閃）。
         // 掛在 container（BattleManager.node）→ 武器被銷毀後特效仍在。
         MuzzleFlash.spawn(this.container, worldPos, dir);
-        if (this.onMuzzle) this.onMuzzle(worldPos, dir);
+        if (this.onMuzzle) this.onMuzzle(worldPos, dir, weaponNode);
         return bullet;
     }
 }

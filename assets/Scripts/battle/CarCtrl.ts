@@ -40,6 +40,9 @@ export default class CarCtrl {
     public airPhysics: AirPhysics | null = null;
     public rescue: StuckRescue | null = null;
 
+    // 線上 host 用：噴射輪實際噴射時回報該輪節點，供同步噴射音效到對手畫面
+    public onJet: ((wheelNode: cc.Node) => void) | null = null;
+
     private wheelSpeed = 0;
     private gunCooldown = 0;
     private cannonCooldown = 0;
@@ -153,7 +156,7 @@ export default class CarCtrl {
     private updateJet(input: OnlineInputState) {
         if (!input.boost || !this.car) return;
         for (const ab of this.car.wheelAbilities) {
-            if (ab && ab.applyJet) ab.applyJet();
+            if (ab && ab.applyJet && ab.applyJet() && this.onJet && ab.node) this.onJet(ab.node);
         }
     }
 

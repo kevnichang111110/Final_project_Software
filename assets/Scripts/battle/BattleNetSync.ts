@@ -9,8 +9,10 @@ import CarBuilder from "./CarBuilder";
 import Bullet from "../Bullet";
 import MuzzleFlash from "../fx/MuzzleFlash";
 import HitSpark from "../fx/HitSpark";
+import HitFeedback from "../fx/HitFeedback";
 import Health from "../HealthManager";
 import OnlineRuntime, { OnlineInputState } from "../online/OnlineRuntime";
+import { HITFX } from "../core/GameConstants";
 
 // BattleNetSync 需要從 BattleManager 取得的東西
 export interface INetBattle {
@@ -41,8 +43,10 @@ export default class BattleNetSync {
     private p2ShownSuddenDeath = false;
 
     // 主機端累積的一次性特效，每次快照送出後清空，client 播放
-    // t=0 槍口火光（a=方向弧度）；t=1 打擊火花（a=強度 0~1）
-    private pendingFx: { t: number, x: number, y: number, a: number }[] = [];
+    // t=0 槍口火光（a=方向弧度，c/k=開火零件→client 播 attack 音效）
+    // t=1 打擊火花（a=強度 0~1，純視覺；受擊音效改由 syncHP 掉血驅動）
+    // t=2 噴射能力（c/k=噴射輪→client 播 ability 音效，無位置）
+    private pendingFx: { t: number, x: number, y: number, a: number, c?: number, k?: string }[] = [];
 
     // 安全檢查：偵測到第二個主機（伺服器把兩台都配成 P1）時只警告一次
     private hostConflict = false;
@@ -106,15 +110,37 @@ export default class BattleNetSync {
         this.debrisNodes.push({ node, p: prefabIndex });
     }
 
-    // host：記錄一次槍口火光（世界座標 + 方向弧度），等下次快照帶給對手
-    recordMuzzle(worldPos: cc.Vec2, dir: cc.Vec2) {
+    // host：記錄一次槍口火光（世界座標 + 方向弧度 + 開火零件參照），等下次快照帶給對手
+    recordMuzzle(worldPos: cc.Vec2, dir: cc.Vec2, weaponNode?: cc.Node) {
         if (this.pendingFx.length >= 40) return; // 上限保護
-        this.pendingFx.push({ t: 0, x: worldPos.x, y: worldPos.y, a: Math.atan2(dir.y, dir.x) });
+        const ref = this.findPartRef(weaponNode);
+        this.pendingFx.push({ t: 0, x: worldPos.x, y: worldPos.y, a: Math.atan2(dir.y, dir.x), c: ref ? ref.c : undefined, k: ref ? ref.k : undefined });
     }
     // host：記錄一次打擊火花（世界座標 + 強度）
     recordHit(worldPos: cc.Vec2, strength: number) {
         if (this.pendingFx.length >= 40) return;
         this.pendingFx.push({ t: 1, x: worldPos.x, y: worldPos.y, a: Math.max(0, Math.min(1, strength)) });
+    }
+    // host：記錄一次噴射能力觸發（只需零件參照，無位置）。同一輪子同一批快照只記一次。
+    recordAbility(wheelNode: cc.Node) {
+        const ref = this.findPartRef(wheelNode);
+        if (!ref) return;
+        if (this.pendingFx.some(f => f.t === 2 && f.c === ref.c && f.k === ref.k)) return;
+        if (this.pendingFx.length >= 40) return;
+        this.pendingFx.push({ t: 2, x: 0, y: 0, a: 0, c: ref.c, k: ref.k });
+    }
+    // 在兩台車的 partsMap 反查某節點 → { c:車序(0=p1/1=p2), k:格子鍵 }，讓 client 找到自己那份零件播音效
+    private findPartRef(node?: cc.Node): { c: number, k: string } | null {
+        if (!node) return null;
+        const cars = [this.bm.getP1Car(), this.bm.getP2Car()];
+        for (let c = 0; c < cars.length; c++) {
+            const car = cars[c];
+            if (!car || !car.partsMap) continue;
+            let found: string | null = null;
+            car.partsMap.forEach((n, key) => { if (n === node) found = key; });
+            if (found) return { c, k: found };
+        }
+        return null;
     }
     private drainFx(): any[] {
         const f = this.pendingFx;
@@ -179,16 +205,34 @@ export default class BattleNetSync {
         this.playFx(msg.fx || []);
     }
 
-    // client：播放主機傳來的一次性特效（槍口火光 / 打擊火花，純視覺、無震動/頓格）
+    // client：播放主機傳來的一次性特效（槍口火光 / 打擊火花 / 噴射音效）。
+    // 打擊火花同時帶動背景震動：client 不跑 takeDamage，畫面震動只能由此驅動（強度 a=dmg/HITSTOP_DAMAGE）。
     private playFx(list: any[]) {
         if (!list || !list.length || !this.bm.node) return;
         for (const f of list) {
             if (f.t === 1) {
                 HitSpark.spawn(this.bm.node, cc.v2(f.x, f.y), f.a);
+                HitFeedback.shake(f.a * HITFX.HITSTOP_DAMAGE);
+            } else if (f.t === 2) {
+                this.playPartAudio(f.c, f.k, "ability");
             } else {
                 MuzzleFlash.spawn(this.bm.node, cc.v2(f.x, f.y), cc.v2(Math.cos(f.a), Math.sin(f.a)));
+                this.playPartAudio(f.c, f.k, "attack");
             }
         }
+    }
+
+    // client：用車序+格子鍵找到本地對應零件，播它自己的 PartAudio（攻擊/能力），保留各零件不同的音效
+    private playPartAudio(c: number | undefined, k: string | undefined, kind: "attack" | "ability") {
+        if (c == null || k == null) return;
+        const car = c === 0 ? this.bm.getP1Car() : this.bm.getP2Car();
+        if (!car || !car.partsMap) return;
+        const node = car.partsMap.get(k);
+        if (!node || !node.isValid) return;
+        const audio = node.getComponent("PartAudio") as any;
+        if (!audio) return;
+        if (kind === "attack" && audio.playAttack) audio.playAttack();
+        else if (kind === "ability" && audio.playAbility) audio.playAbility();
     }
 
     private applyMeta(meta: any) {
@@ -229,7 +273,12 @@ export default class BattleNetSync {
         }
         // 主機已銷毀（快照中沒有）的零件 → 在 P2 同步斷開銷毀
         car.partsMap.forEach((node, key) => {
-            if (node && node.isValid && !present.has(key)) CarBuilder.disjointPart(node);
+            if (node && node.isValid && !present.has(key)) {
+                // 摧毀音效：節點還沒 destroy（disjointPart 延遲銷毀），先用它自己的 PartAudio 播一次 die
+                const audio = node.getComponent("PartAudio") as any;
+                if (audio && audio.playDie) audio.playDie();
+                CarBuilder.disjointPart(node);
+            }
         });
     }
 

@@ -37,13 +37,14 @@ export default class WheelAbility extends cc.Component {
     }
 
     // 由 BattleManager 在玩家按住 boost 時每幀呼叫
-    applyJet() {
-        if (this.type !== WheelAbilityType.Jet) return;
+    applyJet(): boolean {
+        if (this.type !== WheelAbilityType.Jet) return false;
         const rb = this.getComponent(cc.RigidBody);
-        if (!rb) return;
+        if (!rb) return false;
         rb.applyForceToCenter(cc.v2(0, this.jetForce), true);
 
         const audio = this.getComponent("PartAudio") as any;
         if (audio && audio.playAbility) audio.playAbility();
+        return true;
     }
 }

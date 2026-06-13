@@ -111,6 +111,14 @@ export default class HitFeedback extends cc.Component {
         }, time * 1000);
     }
 
+    // 只加震動、不噴火花/不 hitstop/不回報網路。給線上 P2 用：
+    // client 不跑 takeDamage，改由主機快照的打擊 fx 驅動既有的背景位移震動（火花已另外同步）。
+    static shake(damage: number) {
+        const inst = HitFeedback.instance;
+        if (!inst || damage < HITFX.MIN_DAMAGE) return;
+        inst.addTrauma(Math.min(HITFX.SHAKE_MAX_TRAUMA, damage * HITFX.SHAKE_PER_DAMAGE));
+    }
+
     // ===== static 總入口（任何地方一行觸發；無實例時安全 no-op）=====
     static trigger(damage: number, worldPos?: cc.Vec2) {
         const inst = HitFeedback.instance;

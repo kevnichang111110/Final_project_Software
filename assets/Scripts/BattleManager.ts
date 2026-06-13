@@ -340,7 +340,7 @@ export default class BattleManager extends cc.Component implements INetBattle {
         });
         // 線上 host：把槍口火光與打擊火花累積起來，隨快照同步給對手畫面
         if (this.mode === "HOST") {
-            this.weapons.onMuzzle = (pos, dir) => { if (this.net) this.net.recordMuzzle(pos, dir); };
+            this.weapons.onMuzzle = (pos, dir, node) => { if (this.net) this.net.recordMuzzle(pos, dir, node); };
             // 只同步一般傷害火花；零件擊破等級（HITSTOP_DAMAGE）client 端會自己由 disjointPart 產生
             HitFeedback.onTrigger = (pos, dmg) => {
                 if (this.net && dmg < HITFX.HITSTOP_DAMAGE) this.net.recordHit(pos, dmg / HITFX.HITSTOP_DAMAGE);
@@ -425,6 +425,9 @@ export default class BattleManager extends cc.Component implements INetBattle {
                 useWallRide: false, useAirPhysics: false, useStuckRescue: false,
                 airBoundary: boundary, gunFireInterval: this.gunFireInterval,
             });
+            // 兩台車噴射時都記錄音效 cue，隨快照同步給對手畫面
+            this.ctrlA.onJet = (n) => { if (this.net) this.net.recordAbility(n); };
+            this.ctrlB.onJet = (n) => { if (this.net) this.net.recordAbility(n); };
         }
         // 倒數期間先靜止，倒數結束 host 才轉 Dynamic（client 物理已關閉）
         this.startAllPhysics(false);
